@@ -6,6 +6,18 @@ __pycache__/
 # C extensions
 *.so
 
+#Data
+data/
+
+#Trial scripts
+trash.py
+
+#VS code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
 # Distribution / packaging
 .Python
 build/
