@@ -16,7 +16,7 @@ def sample_users(orders: pd.DataFrame, sample_n: int, seed: int = 42):
 def filter_orders_by_users(orders: pd.DataFrame, user_ids: pd.Series) -> pd.DataFrame:
     return orders[orders["user_id"].isin(user_ids)]
 
- 
+
 def build_sample_dataset(
     input_dir: Path, output_dir: Path, sample_n: int, seed: int = 42
 ) -> None:

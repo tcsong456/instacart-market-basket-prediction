@@ -61,6 +61,20 @@ def test_load_contract_raises_for_invalid_yaml(tmp_path):
     assert isinstance(error.value.__cause__, yaml.YAMLError)
 
 
+def test_load_contract_raises_for_empty_contract(tmp_path):
+    contract_path = tmp_path / "orders.yaml"
+
+    contract_path.write_text(
+        "",
+    )
+
+    with pytest.raises(
+        InvalidContractError,
+        match="Contract file is empty",
+    ):
+        load_contract(contract_path)
+
+
 def test_load_contract_rejects_non_mapping_root(tmp_path):
     contract_path = tmp_path / "list.yaml"
     contract_path.write_text(
