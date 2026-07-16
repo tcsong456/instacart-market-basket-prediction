@@ -10,12 +10,12 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 authors = [
-    {"name": "Congxi Song"}
+    {"name" = "Congxi Song"}
 ]
 
 dependencies = [
     "pandas==2.3.1",
-    "pyspark==3.5.0"
+    "pyspark==3.5.0",
     "google-cloud-storage==3.2.0",
     "numpy==1.21.1"
 ]
@@ -34,3 +34,4 @@ addopts = "-ra"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+
