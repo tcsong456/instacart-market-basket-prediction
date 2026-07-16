@@ -1,6 +1,7 @@
-import pandas as pd
 import numpy as np
-from scripts.build_sample_dataset import sample_users
+import pandas as pd
+
+from instacart_etl.sample.build_sample_dataset import sample_users
 
 
 def test_same_seed_produce_same_users(tiny_fake_testset_csv):
