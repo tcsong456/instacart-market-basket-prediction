@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "instcart-market-basket-prediction"
+version = "0.1.0"
+description = "Production-grade Instacart Market Basket Prediction pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+
+authors = [
+    {"name": "Congxi Song"}
+]
+
+dependencies = [
+    "pandas==2.3.1",
+    "pyspark==3.5.0"
+    "google-cloud-storage==3.2.0",
+    "numpy==1.21.1"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.4.1",
+    "ruff==0.15.14"
+]
+
+[tools.setuptools.package.find]
+include = ["src"]
+
+[tools.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]

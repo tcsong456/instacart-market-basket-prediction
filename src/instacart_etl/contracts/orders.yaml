@@ -1,0 +1,151 @@
+dataset:
+  name: orders
+  description: >
+    One row per customer order, including order sequence,
+    evaluation split, temporal information, and the interval
+    since the customer's previous order.
+
+  owner: Congxi Song
+  format: csv
+  delimiter: ","
+  header: true
+  encoding: utf-8
+
+  grain:
+    - order_id
+  
+  primary_key:
+    - order_id
+
+schema:
+  - name: order_id
+    type: integer
+    nullable: false
+    description: unique identifier for an order
+    constraints:
+      unique: true
+      minimum: 1
+
+  - name: user_id
+    type: integer
+    nullable: false
+    description: Identifier of the user who placed the order
+    constraints:
+      minimum: 1
+  
+  - name: eval_set
+    type: string
+    nullable: false
+    description: Dataset split assigned to the order
+    constraints:
+      allowed_values:
+        - prior
+        - train
+        - test
+  
+  - name: order_number
+    type: integer
+    nullable: false
+    description: Sequential order number for the user
+    constraints:
+      minimum: 1
+  
+  - name: order_dow
+    type: integer
+    nullable: false
+    description: Day of week on which the order was placed
+    constraints:
+      minimum: 0
+      maximum: 6
+  
+  - name: order_hour_of_day
+    type: integer
+    nullable: false
+    description: Hour of day on which the order was placed
+    constraints:
+      minimum: 0
+      maximum: 23
+  
+  - name: days_since_prior_order
+    type: double
+    nullable: true
+    description: Number of days since the user's previous order
+    constraints:
+      minimum: 0
+      maximum: 30
+  
+derived_fields:
+  - name: is_last_order
+    type: boolean
+    description: >
+      Indicates whether the row has the highest order_number
+      for its user.
+    expression: >
+      order_number = MAX(order_number) OVER (
+                      PARTITION BY user_id
+                    )
+  
+  - name: train_or_test_count
+    type: integer
+    description: >
+      Number of train or test orders belonging to the user.
+    expression:
+      SUM(
+        CASE
+        WHEN eval_set IN ('train', 'test')
+        THEN 1 ELSE 0
+        END
+      ) OVER (
+        PARTITION by user_id
+      )
+  
+  - name: uesr_min_order_number
+    type: integer
+    expression: >
+      MIN(order_number) OVER (PARTITION BY user_id)
+    
+  - name: user_max_order_number
+    type: integer
+    expression: >
+      MAX(order_number) OVER (PARTITION BY user_id)
+  
+  - name: user_distinct_order_number_count
+    type: integer
+    expression: >
+      COUNT(DISTINCT order_number) OVER (PARTITION BY user_id)
+
+rules:
+  - name: first_order_has_no_prior_interval
+    description: >
+      The first order for each user should not have a valid
+      value for days_since_prior_order and it must be null
+    expression: >
+      order_number <> 1 OR days_since_prior_order is NULL
+  
+  - name: later_orders_must_have_prior_interval
+    description: >
+      Orders after the first order should contain the number
+      of days since the previous order
+    expression: >
+      order_number = 1 OR days_since_prior_order IS NOT NULL
+  
+  - name: last_order_per_user_is_train_or_test
+    description: >
+      The final order of each user must be either train or test
+    expression: >
+      NOT is_last_order OR eval_set IN ('train', 'test')
+  
+  - name: only_one_train_or_test_per_user
+    description: >
+      Every user should have exactly one eval_set be either
+      train or test
+    expression: >
+      train_or_test_count = 1
+    
+  - name: contiguous_order_numbers
+    description: >
+      Order numbers for each user must form a continuous
+      sequence from 1 to the user's maximum order number.
+    expression: >
+      uesr_min_order_number = 1
+      AND user_max_order_number = user_distinct_order_number_count
