@@ -51,6 +51,7 @@ ignore = []
 
 [tool.coverage.run]
 source = ["src"]
+omit= ["*/__init__.py"]
 
 [tool.coverage.report]
 show_missing = true
