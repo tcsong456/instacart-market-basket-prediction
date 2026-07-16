@@ -24,4 +24,4 @@ def build_sample_dataset(
 
     sampled_user_ids = sample_users(orders, sample_n, seed)
     filtered_orders = filter_orders_by_users(orders, sampled_user_ids)
-    filtered_orders.to_csv(output_dir / 'orders.csv', index=False)
+    filtered_orders.to_csv(output_dir / "orders.csv", index=False)
