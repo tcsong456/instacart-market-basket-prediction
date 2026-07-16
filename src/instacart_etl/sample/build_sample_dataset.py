@@ -1,7 +1,7 @@
 import pandas as pd
 
 
-def sample_users(orders: pd.DataFrame, sample_n: int, seed: int):
+def sample_users(orders: pd.DataFrame, sample_n: int, seed: int = 42):
     unique_users = orders["user_id"].nunique()
     if sample_n > unique_users:
         raise ValueError(
