@@ -62,7 +62,7 @@ def test_load_contract_raises_for_invalid_yaml(tmp_path):
 
 
 def test_load_contract_raises_for_empty_contract(tmp_path):
-    contract_path = tmp_path / "orders.yaml"
+    contract_path = tmp_path / "empty.yaml"
 
     contract_path.write_text(
         "",
@@ -70,7 +70,7 @@ def test_load_contract_raises_for_empty_contract(tmp_path):
 
     with pytest.raises(
         InvalidContractError,
-        match="Contract file is empty",
+        match="Contract is empty!",
     ):
         load_contract(contract_path)
 
