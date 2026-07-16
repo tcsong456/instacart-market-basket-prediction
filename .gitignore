@@ -11,6 +11,7 @@ data/
 
 #Trial scripts
 trash.py
+trash/*
 
 #VS code
 .vscode/*
