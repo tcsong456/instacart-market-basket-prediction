@@ -38,13 +38,13 @@ jobs:
       
       - name: Unit-test
         run: |
-          python pytest tests/unit_test \
+          pytest tests/unit_test \
           --cov=src \
           --cov-report=term-missing
       
       - name: Integration-test
         run: |
-          python pytest tests/integration_test \
+          pytest tests/integration_test \
           --cov=src \
           --cov-append \
           --cov-report=term-missing
