@@ -97,7 +97,7 @@ def parse_args():  # pragma: no cover
     parser.add_argument("--input-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--sample-n", type=int, default=100)
-    parser.add_argument("--chunk-sie", type=int, default=1e6)
+    parser.add_argument("--chunk-size", type=int, default=1e6)
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
@@ -105,8 +105,8 @@ def parse_args():  # pragma: no cover
 if __name__ == "__main__":  # pragma: no cover
     args = parse_args()
     build_sample_dataset(
-        raw_dir=args.input_dir,
-        sample_dir=args.output_dir,
+        input_dir=args.input_dir,
+        output_dir=args.output_dir,
         chunk_size=args.chunk_size,
         seed=args.seed,
         sample_n=args.sample_n,
