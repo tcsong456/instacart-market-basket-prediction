@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 LOOKUP_FILES = ["aisles.csv", "departments.csv", "products.csv"]
 ORDER_PRODUCT_FILES = ["order_products__prior.csv", "order_products__train.csv"]
 
