@@ -81,7 +81,6 @@ def build_sample_dataset(
     filtered_orders.to_csv(output_dir / "orders.csv", index=False)
 
     sampled_order_ids = set(filtered_orders["order_id"])
-
     for filename in ORDER_PRODUCT_FILES:
         write_filtered_orders(
             input_dir=input_dir,
