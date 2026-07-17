@@ -92,7 +92,7 @@ def build_sample_dataset(
     copy_lookup_files(input_dir, output_dir)
 
 
-def parse_args():
+def parse_args():  # pragma: no cover
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -102,7 +102,7 @@ def parse_args():
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     args = parse_args()
     build_sample_dataset(
         raw_dir=args.input_dir,
