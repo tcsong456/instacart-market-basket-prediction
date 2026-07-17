@@ -1,5 +1,6 @@
 import argparse
 import shutil
+
 from pathlib import Path
 
 import pandas as pd
@@ -78,6 +79,7 @@ def build_sample_dataset(
     sampled_user_ids = sample_users(orders, sample_n, seed)
     filtered_orders = filter_orders_by_users(orders, sampled_user_ids)
     filtered_orders.to_csv(output_dir / "orders.csv", index=False)
+
     sampled_order_ids = set(filtered_orders["order_id"])
 
     for filename in ORDER_PRODUCT_FILES:
