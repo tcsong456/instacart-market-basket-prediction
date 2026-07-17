@@ -1,5 +1,6 @@
 import argparse
 import shutil
+
 from pathlib import Path
 
 import pandas as pd
@@ -21,7 +22,7 @@ def sample_users(orders: pd.DataFrame, sample_n: int, seed: int = 42) -> pd.Seri
 def filter_orders_by_users(orders: pd.DataFrame, user_ids: pd.Series) -> pd.DataFrame:
     return orders[orders["user_id"].isin(user_ids)]
 
-
+  
 def write_filtered_orders(
     input_dir: Path,
     output_dir: Path,
@@ -73,13 +74,17 @@ def build_sample_dataset(
         None.
     """
 
+ 
+def build_sample_dataset(
+    input_dir: Path, output_dir: Path, sample_n: int, seed: int = 42
+) -> None:
     orders = pd.read_csv(input_dir / "orders.csv")
 
     sampled_user_ids = sample_users(orders, sample_n, seed)
     filtered_orders = filter_orders_by_users(orders, sampled_user_ids)
     filtered_orders.to_csv(output_dir / "orders.csv", index=False)
-    sampled_order_ids = set(filtered_orders["order_id"])
 
+    sampled_order_ids = set(filtered_orders["order_id"])
     for filename in ORDER_PRODUCT_FILES:
         write_filtered_orders(
             input_dir=input_dir,
