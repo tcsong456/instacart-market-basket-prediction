@@ -22,11 +22,7 @@ module "iam" {
   display_name       = var.display_name
   user_email         = var.user_email
 
-  project_roles = [
-    "roles/dataproc.worker",
-    "roles/logging.logWriter",
-    "roles/monitoring.metricWriter"
-  ]
+  project_roles = var.project_roles
 
   bucket_roles = {
     raw_admin = {
@@ -53,7 +49,48 @@ module "iam" {
       bucket = module.gcs_buckets.bucket_names["dataproc-staging"]
       role   = "roles/storage.objectAdmin"
     }
+    dataproc_temp_admin = {
+      bucket = module.gcs_buckets.bucket_names["dataproc-temp"]
+      role   = "roles/storage.objectAdmin"
+    }
   }
 
   depends_on = [google_project_service.required_apis]
+}
+
+module "dataproc" {
+  source = "../../modules/dataproc"
+
+  project_id   = var.project_id
+  cluster_name = "dataproc-cluster"
+  region       = var.region
+
+  prefix                = var.prefix
+  suffix                = random_id.bucket_suffix.hex
+  network_tags          = var.network_tags
+  service_account_email = module.iam.service_account_email
+
+  image_version  = var.image_version
+  staging_bucket = module.gcs_buckets.bucket_names["dataproc-staging"]
+  temp_bucket    = module.gcs_buckets.bucket_names["dataproc-temp"]
+
+  spark_shuffle_partitions = var.spark_shuffle_partitions
+
+  spark_properties    = var.spark_properties
+  optional_components = var.optional_components
+
+  worker_count             = var.worker_count
+  master_machine_type      = var.master_machine_type
+  boot_disk_type           = var.boot_disk_type
+  master_boot_disk_size_gb = var.master_boot_disk_size_gb
+  worker_machine_type      = var.worker_machine_type
+  worker_boot_disk_size_gb = var.worker_boot_disk_size_gb
+
+  initialization_actions = var.initialization_actions
+
+  depends_on = [
+    module.gcs_buckets,
+    module.iam,
+    google_project_service.required_apis
+  ]
 }
