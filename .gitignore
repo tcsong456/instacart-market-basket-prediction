@@ -9,6 +9,13 @@ __pycache__/
 #Data
 data/
 
+# Terraform working directory
+**/.terraform/*
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+
 #Trial scripts
 trash.py
 trash/*
