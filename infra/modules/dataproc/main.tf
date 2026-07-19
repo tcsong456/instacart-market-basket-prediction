@@ -13,8 +13,12 @@ resource "google_dataproc_cluster" "instacart_cluster" {
       service_account_scopes = [
         "https://www.googleapis.com/auth/cloud-platform",
       ]
-      internal_ip_only = false
+
+      subnetwork = var.subnetwork_uri
+
+      internal_ip_only = true
       tags             = var.network_tags
+
       metadata = {
         block-project-ssh-keys = true
       }

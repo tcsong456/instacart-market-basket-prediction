@@ -23,11 +23,27 @@ resource "google_project_iam_member" "dataproc_workder" {
 resource "google_project_iam_member" "user_dataproc_editor" {
   project = var.project_id
   role    = "roles/dataproc.editor"
-  member  = var.user_email
+  member  = "user:${var.admin_user}"
 }
 
 resource "google_service_account_iam_member" "user_act_as_dataproc_sa" {
   service_account_id = google_service_account.service_account.name
   role               = "roles/iam.serviceAccountUser"
-  member             = var.user_email
+  member             = "user:${var.admin_user}"
+}
+
+resource "google_project_iam_member" "iap_tunnel_accessor" {
+  count = var.enable_iap_ssh ? 1 : 0
+
+  project = var.project_id
+  role    = "roles/iap.tunnelResourceAccessor"
+  member  = "user:${var.admin_user}"
+}
+
+resource "google_project_iam_member" "os_login" {
+  count = var.enable_iap_ssh ? 1 : 0
+
+  project = var.project_id
+  role    = "roles/compute.osAdminLogin"
+  member  = "user:${var.admin_user}"
 }

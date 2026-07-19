@@ -17,7 +17,7 @@ display_name = "ETL service account"
 
 prefix = "instacart"
 
-user_email = "user:congxisong@hotmail.com"
+admin_user = "congxisong@hotmail.com"
 
 project_roles = [
   "roles/dataproc.worker",
@@ -31,5 +31,9 @@ worker_machine_type = "e2-standard-4"
 
 master_machine_type = "e2-standard-4"
 
-network_tags = ["dataproc-network"]
+subnet_cidr = "10.10.0.0/24"
+
+enable_iap_ssh = true
+
+enable_nat_router = true
 

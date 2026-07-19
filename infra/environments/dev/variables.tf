@@ -32,7 +32,19 @@ variable "display_name" {
   type = string
 }
 
-variable "user_email" {
+variable "enable_nat_router" {
+  type = bool
+}
+
+variable "enable_iap_ssh" {
+  type = bool
+}
+
+variable "admin_user" {
+  type = string
+}
+
+variable "subnet_cidr" {
   type = string
 }
 
@@ -87,10 +99,6 @@ variable "optional_components" {
   description = "Optional Dataproc packages to install"
   type        = list(string)
   default     = []
-}
-
-variable "network_tags" {
-  type = list(string)
 }
 
 variable "initialization_actions" {

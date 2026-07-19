@@ -24,6 +24,11 @@ variable "project_roles" {
   type        = set(string)
 }
 
-variable "user_email" {
+variable "admin_user" {
   type = string
+}
+
+variable "enable_iap_ssh" {
+  description = "Wether to use iap ssh get access to VMs"
+  type        = bool
 }

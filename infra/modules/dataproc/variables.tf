@@ -95,3 +95,8 @@ variable "network_tags" {
   description = "Network tags added to Dataproc VMs"
   type        = list(string)
 }
+
+variable "subnetwork_uri" {
+  description = "Subnetwork used by Dataproc cluster VMs"
+  type        = string
+}
