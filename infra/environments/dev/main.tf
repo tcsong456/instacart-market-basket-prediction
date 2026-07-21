@@ -18,8 +18,7 @@ module "iam" {
   source = "../../modules/iam"
 
   project_id         = var.project_id
-  service_account_id = var.service_account_id
-  display_name       = var.display_name
+  etl_service_account_id = var.service_account_id
   admin_user         = var.admin_user
   enable_iap_ssh     = var.enable_iap_ssh
 
