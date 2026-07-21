@@ -17,10 +17,10 @@ module "gcs_buckets" {
 module "iam" {
   source = "../../modules/iam"
 
-  project_id         = var.project_id
+  project_id             = var.project_id
   etl_service_account_id = var.service_account_id
-  admin_user         = var.admin_user
-  enable_iap_ssh     = var.enable_iap_ssh
+  admin_user             = var.admin_user
+  enable_iap_ssh         = var.enable_iap_ssh
 
   project_roles = var.project_roles
 
