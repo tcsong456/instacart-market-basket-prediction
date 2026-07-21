@@ -1,7 +1,16 @@
-resource "google_service_account" "service_account" {
+data "terraform_remote_state" "bootstrap" {
+  backend = "gcs"
+
+  config = {
+    bucket = "instacart-terraform-state-3c0d312b"
+    prefix = "bootstrap"
+  }
+}
+
+resource "google_service_account" "terraform_etl" {
   project      = var.project_id
-  account_id   = var.service_account_id
-  display_name = var.display_name
+  account_id   = var.etl_service_account_id
+  display_name = "Data ETL service account"
 }
 
 resource "google_storage_bucket_iam_member" "bucket_roles" {
@@ -20,16 +29,16 @@ resource "google_project_iam_member" "dataproc_workder" {
   member  = "serviceAccount:${google_service_account.service_account.email}"
 }
 
+resource "google_service_account_iam_member" "deployer_use_etl_runtime" {
+  service_account_id = google_service_account.terraform_etl.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${data.terraform_remote_state.bootstrap.outputs.terraform_deployer_email}"
+}
+
 resource "google_project_iam_member" "user_dataproc_editor" {
   project = var.project_id
   role    = "roles/dataproc.editor"
   member  = "user:${var.admin_user}"
-}
-
-resource "google_service_account_iam_member" "user_act_as_dataproc_sa" {
-  service_account_id = google_service_account.service_account.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "user:${var.admin_user}"
 }
 
 resource "google_project_iam_member" "iap_tunnel_accessor" {

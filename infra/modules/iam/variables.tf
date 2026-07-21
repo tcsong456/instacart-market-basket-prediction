@@ -2,15 +2,6 @@ variable "project_id" {
   type = string
 }
 
-variable "display_name" {
-  description = "Display name for the service account"
-  type        = string
-}
-
-variable "service_account_id" {
-  type = string
-}
-
 variable "bucket_roles" {
   description = "Bucket-level IAM roles assigned to the service account"
   type = map(object({
@@ -31,4 +22,9 @@ variable "admin_user" {
 variable "enable_iap_ssh" {
   description = "Wether to use iap ssh get access to VMs"
   type        = bool
+}
+
+variable "etl_service_account_id" {
+  description = "The name of the etl service account"
+  type        = string
 }
