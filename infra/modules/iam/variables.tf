@@ -28,3 +28,13 @@ variable "etl_service_account_id" {
   description = "The name of the etl service account"
   type        = string
 }
+
+variable "dataproc_staging_bucket_name" {
+  description = "Name of the Dataproc staging bucket"
+  type        = string
+}
+
+variable "dataproc_temp_bucket_name" {
+  description = "Name of the Dataproc temporary bucket"
+  type        = string
+}

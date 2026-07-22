@@ -24,6 +24,10 @@ variable "prefix" {
   type        = string
 }
 
+variable "etl_service_account_id" {
+  type = string
+}
+
 variable "enable_nat_router" {
   type = bool
 }
@@ -61,7 +65,7 @@ variable "master_boot_disk_size_gb" {
 variable "worker_machine_type" {
   description = "The type of machine used on dataproc worker node"
   type        = string
-  default     = "e2-stndard-2"
+  default     = "e2-standard-2"
 }
 
 variable "worker_boot_disk_size_gb" {

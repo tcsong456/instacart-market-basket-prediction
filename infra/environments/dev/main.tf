@@ -18,9 +18,12 @@ module "iam" {
   source = "../../modules/iam"
 
   project_id             = var.project_id
-  etl_service_account_id = var.service_account_id
+  etl_service_account_id = var.etl_service_account_id
   admin_user             = var.admin_user
   enable_iap_ssh         = var.enable_iap_ssh
+
+  dataproc_temp_bucket_name    = module.gcs_buckets.bucket_names["dataproc-temp"]
+  dataproc_staging_bucket_name = module.gcs_buckets.bucket_names["dataproc-staging"]
 
   project_roles = var.project_roles
 

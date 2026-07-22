@@ -13,20 +13,32 @@ resource "google_service_account" "terraform_etl" {
   display_name = "Data ETL service account"
 }
 
+resource "google_storage_bucket_iam_member" "dataproc_staging_admin" {
+  bucket = var.dataproc_staging_bucket_name
+  role   = "roles/storage.admin"
+  member = "serviceAccount:${google_service_account.terraform_etl.email}"
+}
+
+resource "google_storage_bucket_iam_member" "dataproc_temp_admin" {
+  bucket = var.dataproc_temp_bucket_name
+  role   = "roles/storage.admin"
+  member = "serviceAccount:${google_service_account.terraform_etl.email}"
+}
+
 resource "google_storage_bucket_iam_member" "bucket_roles" {
   for_each = var.bucket_roles
 
   bucket = each.value.bucket
   role   = each.value.role
-  member = "serviceAccount:${google_service_account.service_account.email}"
+  member = "serviceAccount:${google_service_account.terraform_etl.email}"
 }
 
-resource "google_project_iam_member" "dataproc_workder" {
+resource "google_project_iam_member" "dataproc_worker" {
   for_each = var.project_roles
 
   project = var.project_id
   role    = each.value
-  member  = "serviceAccount:${google_service_account.service_account.email}"
+  member  = "serviceAccount:${google_service_account.terraform_etl.email}"
 }
 
 resource "google_service_account_iam_member" "deployer_use_etl_runtime" {
@@ -39,6 +51,12 @@ resource "google_project_iam_member" "user_dataproc_editor" {
   project = var.project_id
   role    = "roles/dataproc.editor"
   member  = "user:${var.admin_user}"
+}
+
+resource "google_service_account_iam_member" "user_dataproc_submit" {
+  service_account_id = google_service_account.terraform_etl.name
+  role = "roles/iam.serviceAccountUser"
+  member = "user:${var.admin_user}"
 }
 
 resource "google_project_iam_member" "iap_tunnel_accessor" {
