@@ -55,8 +55,8 @@ resource "google_project_iam_member" "user_dataproc_editor" {
 
 resource "google_service_account_iam_member" "user_dataproc_submit" {
   service_account_id = google_service_account.terraform_etl.name
-  role = "roles/iam.serviceAccountUser"
-  member = "user:${var.admin_user}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "user:${var.admin_user}"
 }
 
 resource "google_project_iam_member" "iap_tunnel_accessor" {
