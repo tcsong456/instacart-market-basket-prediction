@@ -67,4 +67,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
-          path: plan.txt
+          path: infra/environments/prod/plan.txt
