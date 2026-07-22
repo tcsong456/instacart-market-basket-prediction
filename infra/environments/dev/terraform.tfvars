@@ -11,11 +11,9 @@ buckets = {
   "dataproc-temp"    = { force_destroy = true }
 }
 
-service_account_id = "dataproc-etl-sa"
-
-display_name = "ETL service account"
-
 prefix = "instacart"
+
+etl_service_account_id = "dataproc-etl-sa"
 
 admin_user = "congxisong@hotmail.com"
 

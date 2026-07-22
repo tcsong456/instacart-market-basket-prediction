@@ -1,3 +1,3 @@
 output "service_account_email" {
-  value = google_service_account.service_account.email
+  value = google_service_account.terraform_etl.email
 }

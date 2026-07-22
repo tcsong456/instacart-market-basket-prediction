@@ -26,8 +26,22 @@ resource "google_storage_bucket" "terraform_state" {
   }
 }
 
-resource "google_storage_bucket_iam_member" "remote_state_access" {
-  bucket = google_storage_bucket.terraform_state.name
-  role   = "roles/storage.objectAdmin"
-  member = "user:${var.admin_user}"
+resource "google_service_account" "terraform_deployer" {
+  project = var.project_id
+
+  account_id   = var.deployer_service_account_id
+  display_name = "Terraform deployer"
+  description  = "Service account used by GitHub Actions to run Terraform"
+
+  depends_on = [google_project_service.bootstrap]
+}
+
+resource "google_service_account" "terraform_planner" {
+  project = var.project_id
+
+  account_id   = var.planner_service_account_id
+  display_name = "Terraform planner"
+  description  = "Service account used by GitHub Actions to plan Terraform"
+
+  depends_on = [google_project_service.bootstrap]
 }

@@ -24,11 +24,7 @@ variable "prefix" {
   type        = string
 }
 
-variable "service_account_id" {
-  type = string
-}
-
-variable "display_name" {
+variable "etl_service_account_id" {
   type = string
 }
 
@@ -69,7 +65,7 @@ variable "master_boot_disk_size_gb" {
 variable "worker_machine_type" {
   description = "The type of machine used on dataproc worker node"
   type        = string
-  default     = "e2-stndard-2"
+  default     = "e2-standard-2"
 }
 
 variable "worker_boot_disk_size_gb" {
