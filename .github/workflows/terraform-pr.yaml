@@ -6,7 +6,7 @@ on:
     paths:
       - "infra/environments/**"
       - "infra/modules/**"
-      - ".github/workflows/terraform-plan.yaml"
+      - ".github/workflows/terraform-pr.yaml"
   
 permissions:
   contents: read
@@ -35,7 +35,7 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.TERRAFORM_DEPLOYER_SA }}
+          service_account: ${{ vars.TERRAFORM_PLANNER_SA }}
       
       - name: Setup terraform
         uses: hashicorp/setup-terraform@v3
