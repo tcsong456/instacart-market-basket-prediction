@@ -1,0 +1,70 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/environments/**"
+      - "infra/modules/**"
+      - ".github/workflows/terraform-pr.yaml"
+  
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: terraform-prod-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: infra/environments/prod
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.TERRAFORM_PLANNER_SA }}
+      
+      - name: Setup terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.x"
+          terraform_wrapper: false
+      
+      - name: Check terraform formatting
+        working-directory: infra
+        run: terraform fmt -recursive -check
+      
+      - name: Initialize terraform
+        run: terraform init -input=false
+      
+      - name: Validate terraform
+        run: terraform validate
+      
+      - name: Create Terraform plan
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -out=tfplan
+      
+      - name: Save plan
+        run: terraform show -no-color tfplan > plan.txt
+
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: plan.txt
