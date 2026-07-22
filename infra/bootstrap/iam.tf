@@ -65,6 +65,27 @@ resource "google_storage_bucket_iam_member" "planner_state_reader" {
   member = "serviceAccount:${google_service_account.terraform_planner.email}"
 }
 
+resource "google_project_iam_custom_role" "terraform_storage_plan_reader" {
+  project     = var.project_id
+  role_id     = "terraformStoragePlanReader"
+  title       = "Terraform Storage Plan Reader"
+  description = "Allows Terraform plan to inspect Cloud Storage buckets and IAM policies."
+
+  permissions = [
+    "storage.buckets.get",
+    "storage.buckets.list",
+    "storage.buckets.getIamPolicy",
+    "storage.objects.get",
+    "storage.objects.list",
+  ]
+}
+
+resource "google_project_iam_member" "planner_storage_reader" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.terraform_storage_plan_reader.name
+  member  = "serviceAccount:${google_service_account.terraform_planner.email}"
+}
+
 resource "google_storage_bucket_iam_member" "deployer_state_admin" {
   bucket = google_storage_bucket.terraform_state.name
   role   = "roles/storage.objectAdmin"
