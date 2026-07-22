@@ -43,8 +43,15 @@ jobs:
           terraform_version: "1.9.x"
           terraform_wrapper: false
       
+      - name: Check terraform formatting
+        working-directory: infra
+        run: terraform fmt -recursive -check
+      
       - name: Initialize terraform
         run: terraform init -input=false
+      
+      - name: Validate terraform
+        run: terraform validate
       
       - name: Create Terraform plan
         run: |
