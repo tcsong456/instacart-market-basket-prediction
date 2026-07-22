@@ -1,0 +1,50 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/environments/**"
+      - infra/modules/**
+      - ".github/workflows/terraform-apply.yaml"
+  
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terrafrom-prod-apply
+  cancel-in-progress: false
+
+jobs:
+  terraform-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: infra/environments/prod
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.TERRAFORM_DEPLOYER_SA }}
+      
+      - name: Setup terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.x"
+          terraform_wrapper: false
+      
+      - name: Initialise Terraform
+        run: terraform init -input=false
+      
+      - name: Apply Terraform plan
+        run: terraform apply -input=false -auto-approve

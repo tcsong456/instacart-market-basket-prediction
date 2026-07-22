@@ -1,0 +1,49 @@
+name: Terraform Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/environments/**"
+      - "infra/modules/**"
+      - ".github/workflows/terraform-validation.yaml"
+    
+  push:
+    branches: [main]
+    paths:
+      - "infra/environments/**"
+      - "infra/modules/**"
+      - ".github/workflows/terraform-validation.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  terraform-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        working-directory: infra/environments/prod
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      
+      - name: Setup terraform
+        uses: hashicorp/setup-terraform@v3
+        with: 
+          terraform_version: "1.9.x"
+      
+      - name: Check terraform formatting
+        working-directory: infra
+        run: terraform fmt -recursive -check
+      
+      - name: Initialize terraform
+        run: terraform init -backend=false -input=false
+      
+      - name: Validate terraform
+        run: terraform validate
+
+
