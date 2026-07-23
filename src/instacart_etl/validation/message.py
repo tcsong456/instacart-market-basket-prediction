@@ -9,5 +9,3 @@ def _build_range_message(
 
     if max_value is not None:
         return f"column '{column_name} must be at most {max_value}'"
-
-    return f"No range specified for column '{column_name}'"

@@ -1,9 +1,10 @@
 import argparse
 import shutil
 from pathlib import Path
-from src.instacart_etl.common.paths import join_path, PathLike
 
 import pandas as pd
+
+from src.instacart_etl.common.paths import PathLike, join_path
 
 LOOKUP_FILES = ["aisles.csv", "departments.csv", "products.csv"]
 ORDER_PRODUCT_FILES = ["order_products__prior.csv", "order_products__train.csv"]
@@ -57,7 +58,11 @@ def copy_lookup_files(input_dir: Path, output_dir: Path) -> None:
 
 
 def build_sample_dataset(
-    input_dir: PathLike, output_dir: PathLike, sample_n: int, chunk_size: int, seed: int = 42
+    input_dir: PathLike,
+    output_dir: PathLike,
+    sample_n: int,
+    chunk_size: int,
+    seed: int = 42,
 ) -> None:
     """
     Create sampled datasets for local development and tests. Select a subset

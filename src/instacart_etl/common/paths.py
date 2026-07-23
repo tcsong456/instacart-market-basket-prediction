@@ -2,6 +2,7 @@ from pathlib import Path
 
 PathLike = Path | str
 
+
 def _is_gcs_url(path: PathLike) -> bool:
     return str(path).startswith("gs://")
 
