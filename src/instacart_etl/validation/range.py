@@ -1,9 +1,9 @@
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
+from instacart_etl.validation.exceptions import InvalidConstraintError
 from instacart_etl.validation.message import _build_range_message
 from instacart_etl.validation.models import ValidationResult
-from instacart_etl.validation.exceptions import InvalidConstraintError
 
 
 def validate_range(
