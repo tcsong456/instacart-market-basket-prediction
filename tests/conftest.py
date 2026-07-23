@@ -1,5 +1,13 @@
 import pandas as pd
 import pytest
+from instacart_etl.common.spark import create_spark_session
+
+
+@pytest.fixture(scope="session")
+def spark():
+    spark = create_spark_session('unit-test')
+    yield spark
+    spark.stop()
 
 
 @pytest.fixture

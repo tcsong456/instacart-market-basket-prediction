@@ -3,6 +3,7 @@ from pyspark.sql import functions as F
 
 from instacart_etl.validation.message import _build_range_message
 from instacart_etl.validation.models import ValidationResult
+from instacart_etl.validation.exceptions import InvalidConstraintError
 
 
 def validate_range(
@@ -13,12 +14,12 @@ def validate_range(
     max_value: int | float | None,
 ) -> ValidationResult:
     if min_value is None and max_value is None:
-        raise ValueError(
-            "At least one of mininum value and maximum value mustbe provided"
+        raise InvalidConstraintError(
+            "At least one of minimum value and maximum value must be provided"
         )
 
     if min_value is not None and max_value is not None and min_value > max_value:
-        raise ValueError(
+        raise InvalidConstraintError(
             "minimum value should not be greater than maximum value"
             f"but {min_value} > {max_value}"
         )
