@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from instacart_etl.common.paths import PathLike, join_path
+
 LOOKUP_FILES = ["aisles.csv", "departments.csv", "products.csv"]
 ORDER_PRODUCT_FILES = ["order_products__prior.csv", "order_products__train.csv"]
 
@@ -23,19 +25,21 @@ def filter_orders_by_users(orders: pd.DataFrame, user_ids: pd.Series) -> pd.Data
 
 
 def write_filtered_orders(
-    input_dir: Path,
-    output_dir: Path,
+    input_dir: PathLike,
+    output_dir: PathLike,
     chunk_size: int,
     filename: str,
     order_ids: set[int],
 ) -> None:
     first_chunk = True
     write_any_rows = False
-    for chunk in pd.read_csv(input_dir / filename, chunksize=chunk_size):
+    input_file = join_path(input_dir, filename)
+    output_file = join_path(output_dir, filename)
+    for chunk in pd.read_csv(input_file, chunksize=chunk_size):
         filtered_chunk = chunk[chunk["order_id"].isin(order_ids)]
         if not filtered_chunk.empty:
             filtered_chunk.to_csv(
-                output_dir / filename,
+                output_file,
                 index=False,
                 header=first_chunk,
                 mode="w" if first_chunk else "a",
@@ -54,7 +58,11 @@ def copy_lookup_files(input_dir: Path, output_dir: Path) -> None:
 
 
 def build_sample_dataset(
-    input_dir: Path, output_dir: Path, sample_n: int, chunk_size: int, seed: int = 42
+    input_dir: PathLike,
+    output_dir: PathLike,
+    sample_n: int,
+    chunk_size: int,
+    seed: int = 42,
 ) -> None:
     """
     Create sampled datasets for local development and tests. Select a subset
@@ -73,11 +81,11 @@ def build_sample_dataset(
         None.
     """
 
-    orders = pd.read_csv(input_dir / "orders.csv")
+    orders = pd.read_csv(join_path(input_dir, "orders.csv"))
 
     sampled_user_ids = sample_users(orders, sample_n, seed)
     filtered_orders = filter_orders_by_users(orders, sampled_user_ids)
-    filtered_orders.to_csv(output_dir / "orders.csv", index=False)
+    filtered_orders.to_csv(join_path(output_dir, "orders.csv"), index=False)
 
     sampled_order_ids = set(filtered_orders["order_id"])
     for filename in ORDER_PRODUCT_FILES:
@@ -89,13 +97,13 @@ def build_sample_dataset(
             order_ids=sampled_order_ids,
         )
 
-    copy_lookup_files(input_dir, output_dir)
+    copy_lookup_files(Path(input_dir), Path(output_dir))
 
 
 def parse_args():  # pragma: no cover
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input-dir", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--input-dir", required=True)
+    parser.add_argument("--output-dir", required=True)
     parser.add_argument("--sample-n", type=int, default=100)
     parser.add_argument("--chunk-size", type=int, default=1e6)
     parser.add_argument("--seed", type=int, default=42)
