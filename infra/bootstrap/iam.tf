@@ -60,7 +60,7 @@ resource "google_project_iam_member" "planner_service_usage" {
 
 resource "google_storage_bucket_iam_member" "planner_state_reader" {
   bucket = google_storage_bucket.terraform_state.name
-  role   = "roles/storage.objectAdmin"
+  role   = "roles/storage.objectViewer"
 
   member = "serviceAccount:${google_service_account.terraform_planner.email}"
 }
@@ -74,9 +74,7 @@ resource "google_project_iam_custom_role" "terraform_storage_plan_reader" {
   permissions = [
     "storage.buckets.get",
     "storage.buckets.list",
-    "storage.buckets.getIamPolicy",
-    "storage.objects.get",
-    "storage.objects.list",
+    "storage.buckets.getIamPolicy"
   ]
 }
 
