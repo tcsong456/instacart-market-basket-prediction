@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.instacart_etl.common.paths import PathLike, join_path
+from instacart_etl.common.paths import PathLike, join_path
 
 LOOKUP_FILES = ["aisles.csv", "departments.csv", "products.csv"]
 ORDER_PRODUCT_FILES = ["order_products__prior.csv", "order_products__train.csv"]
