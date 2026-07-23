@@ -1,5 +1,5 @@
 locals {
-  terraform_am_roles = toset([
+  terraform_iam_roles = toset([
     "roles/dataproc.editor",
     "roles/compute.networkAdmin",
     "roles/compute.securityAdmin",
@@ -37,7 +37,7 @@ locals {
 }
 
 resource "google_project_iam_member" "terraform_bootstrap_roles" {
-  for_each = local.terraform_am_roles
+  for_each = local.terraform_iam_roles
 
   project = var.project_id
   role    = each.value
@@ -82,13 +82,6 @@ resource "google_project_iam_member" "planner_storage_reader" {
   project = var.project_id
   role    = google_project_iam_custom_role.terraform_storage_plan_reader.name
   member  = "serviceAccount:${google_service_account.terraform_planner.email}"
-}
-
-resource "google_storage_bucket_iam_member" "deployer_state_admin" {
-  bucket = google_storage_bucket.terraform_state.name
-  role   = "roles/storage.objectAdmin"
-
-  member = "serviceAccount:${google_service_account.terraform_deployer.email}"
 }
 
 resource "google_service_account_iam_member" "github_plan" {

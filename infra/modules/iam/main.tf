@@ -13,18 +13,6 @@ resource "google_service_account" "terraform_etl" {
   display_name = "Data ETL service account"
 }
 
-resource "google_storage_bucket_iam_member" "dataproc_staging_admin" {
-  bucket = var.dataproc_staging_bucket_name
-  role   = "roles/storage.admin"
-  member = "serviceAccount:${google_service_account.terraform_etl.email}"
-}
-
-resource "google_storage_bucket_iam_member" "dataproc_temp_admin" {
-  bucket = var.dataproc_temp_bucket_name
-  role   = "roles/storage.admin"
-  member = "serviceAccount:${google_service_account.terraform_etl.email}"
-}
-
 resource "google_storage_bucket_iam_member" "bucket_roles" {
   for_each = var.bucket_roles
 
