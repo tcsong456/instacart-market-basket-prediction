@@ -81,57 +81,36 @@ def _is_type_compatible(
             IntegerType,
             LongType,
         ),
-        "float": (
-            FloatType,
-        ),
+        "float": (FloatType,),
         "double": (
             FloatType,
             DoubleType,
         ),
-        "number": (
-            NumericType,
-        ),
-        "string": (
-            StringType,
-        ),
-        "boolean": (
-            BooleanType,
-        ),
-        "date": (
-            DateType,
-        ),
-        "timestamp": (
-            TimestampType,
-        ),
-        "decimal": (
-            DecimalType,
-        ),
+        "number": (NumericType,),
+        "string": (StringType,),
+        "boolean": (BooleanType,),
+        "date": (DateType,),
+        "timestamp": (TimestampType,),
+        "decimal": (DecimalType,),
     }
 
     accepted_types = compatibility_map.get(normalized_type)
 
     if accepted_types is None:
-        raise ValueError(
-            f"Unsupported contract type: {contract_type!r}"
-        )
+        raise ValueError(f"Unsupported contract type: {contract_type!r}")
 
     return isinstance(actual_type, accepted_types)
 
 
 def validate_column_datatype(
-    df: DataFrame,
-    *,
-    contract: dict[str, Any]
+    df: DataFrame, *, contract: dict[str, Any]
 ) -> ValidationResult:
-    actual_schemas = {
-            field.name: field.dataType
-            for field in df.schema.fields
-        }
+    actual_schemas = {field.name: field.dataType for field in df.schema.fields}
 
     mismatches, skipped_columns = [], []
-    for contract_schema in contract['schema']:
-        contract_datatype = contract_schema['type']
-        contract_col_name = contract_schema['name']
+    for contract_schema in contract["schema"]:
+        contract_datatype = contract_schema["type"]
+        contract_col_name = contract_schema["name"]
 
         actual_datatype = actual_schemas.get(contract_col_name)
         if actual_datatype is None:
@@ -141,18 +120,18 @@ def validate_column_datatype(
         if not _is_type_compatible(actual_datatype, contract_datatype):
             mismatches.append(
                 {
-                    'column_name': contract_col_name,
-                    'actual_datatype': actual_datatype,
-                    'expected_datatype': contract_datatype
+                    "column_name": contract_col_name,
+                    "actual_datatype": actual_datatype,
+                    "expected_datatype": contract_datatype,
                 }
             )
 
     passed = len(mismatches) == 0
 
     if passed:
-        message = 'All columns have compatible data types'
+        message = "All columns have compatible data types"
     else:
-        mismatch_text = '; '.join(
+        mismatch_text = "; ".join(
             (
                 f"{mismatch['column_name']}: expected "
                 f"{mismatch['expected_datatype']}, but got "
@@ -163,8 +142,8 @@ def validate_column_datatype(
         message = f"Incompatible column data types: {mismatch_text}"
 
     return ValidationResult(
-        rule_name='column_types',
-        category='schema',
+        rule_name="column_types",
+        category="schema",
         passed=passed,
         message=message,
         failed_count=len(mismatches),
@@ -172,5 +151,5 @@ def validate_column_datatype(
         metadata={
             "mismatches": mismatches,
             "skipped_missing_columns": skipped_columns,
-        }
+        },
     )
