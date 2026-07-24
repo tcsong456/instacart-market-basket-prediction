@@ -1,10 +1,10 @@
 dataset:
   name: orders
+  allow_extra_columns: false
   description: >
     One row per customer order, including order sequence,
     evaluation split, temporal information, and the interval
     since the customer's previous order.
-
   owner: Congxi Song
   format: csv
   delimiter: ","
