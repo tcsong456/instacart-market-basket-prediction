@@ -7,7 +7,7 @@ from instacart_etl.validation.exceptions import InvalidConstraintError
 from instacart_etl.validation.models import ValidationResult
 
 
-def nullability_validator(
+def validate_nullability(
     df: DataFrame, *, contract: dict[str, Any]
 ) -> list[ValidationResult]:
     schemas = contract.get("schema")
