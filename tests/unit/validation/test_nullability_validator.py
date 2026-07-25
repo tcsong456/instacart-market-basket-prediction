@@ -6,7 +6,7 @@ from pyspark.sql.types import (
 )
 
 from instacart_etl.validation.exceptions import InvalidConstraintError
-from instacart_etl.validation.null import nullability_validator
+from instacart_etl.validation.null import validate_nullability
 
 
 def test_nullability_validator_passes_non_nullable_columns(spark):
@@ -25,7 +25,7 @@ def test_nullability_validator_passes_non_nullable_columns(spark):
         ]
     }
 
-    results = nullability_validator(df, contract=contract)
+    results = validate_nullability(df, contract=contract)
 
     assert len(results) == 2
     assert all(result.passed for result in results)
@@ -64,7 +64,7 @@ def test_nullability_validator_detects_nulls(spark):
         ]
     }
 
-    results = nullability_validator(df, contract=contract)
+    results = validate_nullability(df, contract=contract)
     results_by_column = {result.metadata["column_name"]: result for result in results}
 
     assert results_by_column["order_id"].passed is False
@@ -115,7 +115,7 @@ def test_nullability_validator_allows_nulls_for_nullable_column(spark):
         ]
     }
 
-    results = nullability_validator(df, contract=contract)[0]
+    results = validate_nullability(df, contract=contract)[0]
 
     assert results.passed is True
     assert results.failed_count == 0
@@ -143,7 +143,7 @@ def test_nullability_validator_rejects_invalid_nullable_value(spark):
         InvalidConstraintError,
         match="must have a boolean",
     ):
-        nullability_validator(
+        validate_nullability(
             df,
             contract=contract,
         )
@@ -167,7 +167,7 @@ def test_nullability_validator_invalid_rows_limit(spark):
         ]
     }
 
-    results = nullability_validator(df, contract=contract)[0]
+    results = validate_nullability(df, contract=contract)[0]
 
     assert results.invalid_rows is not None
     assert results.invalid_rows.count() == 20
