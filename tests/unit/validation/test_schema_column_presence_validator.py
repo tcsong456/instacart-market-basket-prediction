@@ -1,7 +1,7 @@
 import pytest
 from pyspark.sql import Row
 
-from instacart_etl.validation.schema import validate_columns
+from instacart_etl.validation.schema import validate_column_presence
 
 
 def build_contract(allow_extra_columns: bool = False):
@@ -99,7 +99,7 @@ def test_validate_columns(
     df = spark.createDataFrame([Row(**raw_data)])
     contract = build_contract(allow_extra_columns)
 
-    result = validate_columns(df, contract=contract)
+    result = validate_column_presence(df, contract=contract)
 
     assert result.passed is expected_passed
     assert result.failed_count == expected_failed_count
@@ -125,7 +125,7 @@ def test_validate_columns_with_contract_missing_dataset(spark):
     )
     contract = build_contract_without_dataset_as_key()
 
-    result = validate_columns(df, contract=contract)
+    result = validate_column_presence(df, contract=contract)
 
     assert result.passed is False
     assert result.failed_count == 1

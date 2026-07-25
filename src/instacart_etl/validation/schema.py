@@ -20,7 +20,7 @@ from pyspark.sql.types import (
 from instacart_etl.validation.models import ValidationResult
 
 
-def validate_columns(
+def validate_column_presence(
     df: DataFrame,
     *,
     contract: dict[str, Any],
