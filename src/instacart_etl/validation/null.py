@@ -1,26 +1,26 @@
-from pyspark.sql import DataFrame, functions as F
 from typing import Any
-from instacart_etl.validation.models import ValidationResult
+
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
+
 from instacart_etl.validation.exceptions import InvalidConstraintError
+from instacart_etl.validation.models import ValidationResult
 
 
 def nullability_validator(
-    df: DataFrame,
-    *,
-    contract: dict[str, Any]
+    df: DataFrame, *, contract: dict[str, Any]
 ) -> list[ValidationResult]:
-    schemas = contract.get('schema')
+    schemas = contract.get("schema")
 
     non_null_columns = []
 
     for schema in schemas:
-        column_name = schema['name']
-        column_nullability = schema['nullable']
+        column_name = schema["name"]
+        column_nullability = schema["nullable"]
 
         if not isinstance(column_nullability, bool):
             raise InvalidConstraintError(
-                f"Column '{column_name}' must have a boolean "
-                "'nullable' property"
+                f"Column '{column_name}' must have a boolean 'nullable' property"
             )
 
         if not column_nullability:
@@ -30,49 +30,38 @@ def nullability_validator(
         null_rows_count = df.agg(
             *[
                 F.sum(
-                    F.when(
-                        F.col(column).isNull(),
-                        F.lit(1)
-                    ).otherwise(F.lit(0))
+                    F.when(F.col(column).isNull(), F.lit(1)).otherwise(F.lit(0))
                 ).alias(column)
                 for column in non_null_columns
             ]
         ).first()
 
         null_counts = {
-            column: int(null_rows_count[column])
-            for column in non_null_columns
+            column: int(null_rows_count[column]) for column in non_null_columns
         }
 
     results = []
     for schema in schemas:
-        name = schema['name']
-        null = schema['nullable']
+        name = schema["name"]
+        null = schema["nullable"]
 
         if null:
             results.append(
                 ValidationResult(
                     rule_name=f"{name}.nullability",
-                    category='nullability',
+                    category="nullability",
                     passed=True,
                     message=f"Column: '{name}' allows null values",
                     failed_count=0,
                     invalid_rows=None,
-                    metadata={
-                        'column_name': name,
-                        'nullable': True
-                    }
+                    metadata={"column_name": name, "nullable": True},
                 )
             )
         else:
             null_count = null_counts[name]
             passed = null_count == 0
             if not passed:
-                invalid_rows = (
-                    df
-                    .filter(F.col(name).isNull())
-                    .limit(20)
-                )
+                invalid_rows = df.filter(F.col(name).isNull()).limit(20)
             else:
                 invalid_rows = None
 
@@ -93,10 +82,7 @@ def nullability_validator(
                     failed_count=null_count,
                     invalid_rows=invalid_rows,
                     message=message,
-                    metadata={
-                        'column_name': name,
-                        'nullable': False
-                    }
+                    metadata={"column_name": name, "nullable": False},
                 )
             )
 
