@@ -8,6 +8,11 @@ def _is_gcs_url(path: PathLike) -> bool:
 
 
 def join_path(base: PathLike, filename: str) -> PathLike:
+    if isinstance(base, Path) and str(base).startswith('gs:'):
+        raise ValueError(
+                "GCS paths must be provided as strings, not pathlib.Path."
+            )
+    
     if _is_gcs_url(base):
-        return f"{str(base).rstrip('/')}/{filename}"
+        return f"{str(base).rstrip('/')}/{filename.lstrip('/')}"
     return Path(base) / filename
