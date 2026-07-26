@@ -164,7 +164,7 @@ def test_allowed_values_validator_invalid_allowed_values(spark):
 def test_validate_allowed_values_invalid_rows_limit(spark):
     df = spark.createDataFrame([(value,) for value in range(40)], ["value"])
 
-    contract = {"schema": [{"name": "values", "constraints": {"allowed_values": [40]}}]}
+    contract = {"schema": [{"name": "value", "constraints": {"allowed_values": [40]}}]}
 
     result = validate_allowed_values(df, contract=contract)[0]
 
