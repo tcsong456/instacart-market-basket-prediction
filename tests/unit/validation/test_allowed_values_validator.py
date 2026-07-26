@@ -196,8 +196,8 @@ def test_validate_allowed_values_all_values_null(spark):
     schema = StructType([StructField("eval_set", StringType(), True)])
     df = spark.createDataFrame(
         [
-            (None),
-            (None),
+            (None,),
+            (None,),
         ],
         schema=schema,
     )
