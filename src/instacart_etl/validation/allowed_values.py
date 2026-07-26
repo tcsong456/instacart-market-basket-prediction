@@ -1,13 +1,13 @@
 from typing import Any
 
-from pyspark.sql import DataFrame
+from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 
 from instacart_etl.validation.exceptions import InvalidConstraintError
 from instacart_etl.validation.models import ValidationResult
 
 
-def _build_invalid_conditions(column_name: str, allowed_values: list[Any]):
+def _build_invalid_conditions(column_name: str, allowed_values: list[Any]) -> Column:
     return F.col(column_name).isNotNull() & ~F.col(column_name).isin(allowed_values)
 
 
@@ -38,21 +38,18 @@ def validate_allowed_values(
                 allowed_values_list.append(allowed_values)
 
     if allowed_values_columns:
-        failed_count = (
-            df.agg(
-                *[
-                    F.sum(
-                        F.when(
-                            _build_invalid_conditions(column, allowed_values), 1
-                        ).otherwise(0)
-                    ).alias(column)
-                    for column, allowed_values in zip(
-                        allowed_values_columns, allowed_values_list
-                    )
-                ]
-            ).first()
-            or 0
-        )
+        failed_count = df.agg(
+            *[
+                F.sum(
+                    F.when(
+                        _build_invalid_conditions(column, allowed_values), 1
+                    ).otherwise(0)
+                ).alias(column)
+                for column, allowed_values in zip(
+                    allowed_values_columns, allowed_values_list
+                )
+            ]
+        ).first()
         failed_dict = {
             column: int(failed_count[column] or 0) for column in allowed_values_columns
         }

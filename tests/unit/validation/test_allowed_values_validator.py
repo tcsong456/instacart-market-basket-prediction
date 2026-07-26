@@ -1,4 +1,5 @@
 import pytest
+from pyspark.sql.types import StringType, StructField, StructType
 
 from instacart_etl.validation.allowed_values import validate_allowed_values
 from instacart_etl.validation.exceptions import InvalidConstraintError
@@ -174,3 +175,38 @@ def test_validate_allowed_values_invalid_rows_limit(spark):
     assert result.invalid_rows.count() == 20
     assert len(set(invalid_rows)) == 20
     assert set(invalid_rows).issubset(set(range(40)))
+
+
+def test_validate_allowed_values_empty_dataframe(spark):
+    schema = StructType([StructField("eval_set", StringType(), False)])
+    df = spark.createDataFrame([], schema=schema)
+
+    contract = {
+        "schema": [{"name": "eval_set", "constraints": {"allowed_values": ["test"]}}]
+    }
+
+    result = validate_allowed_values(df, contract=contract)[0]
+
+    assert result.passed is True
+    assert result.failed_count == 0
+    assert result.invalid_rows is None
+
+
+def test_validate_allowed_values_all_values_null(spark):
+    schema = StructType([StructField("eval_set", StringType(), True)])
+    df = spark.createDataFrame(
+        [
+            (None,),
+            (None,),
+        ],
+        schema=schema,
+    )
+
+    contract = {
+        "schema": [{"name": "eval_set", "constraints": {"allowed_values": ["train"]}}]
+    }
+
+    result = validate_allowed_values(df, contract=contract)[0]
+
+    assert result.passed is True
+    assert result.failed_count == 0
