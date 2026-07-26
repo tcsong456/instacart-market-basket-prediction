@@ -234,13 +234,14 @@ def test_range_validator_when_dataframe_is_empty(spark):
 
 
 def test_range_validator_with_all_values_null(spark):
+    schema = StructType([StructField("sales", IntegerType(), True)])
     df = spark.createDataFrame(
         [
             (None,),
             (None,),
             (None,),
         ],
-        ["sales"],
+        schema=schema,
     )
 
     contract = {"schema": [{"name": "sales", "constraints": {"minimum": 1}}]}

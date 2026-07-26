@@ -178,10 +178,12 @@ def test_validate_allowed_values_invalid_rows_limit(spark):
 
 
 def test_validate_allowed_values_empty_dataframe(spark):
-    schema = StructType([StructField("sales", StringType(), False)])
+    schema = StructType([StructField("eval_set", StringType(), False)])
     df = spark.createDataFrame([], schema=schema)
 
-    contract = {"schema": [{"name": "value", "constraints": {"allowed_values": [40]}}]}
+    contract = {
+        "schema": [{"name": "eval_set", "constraints": {"allowed_values": ["test"]}}]
+    }
 
     result = validate_allowed_values(df, contract=contract)[0]
 
@@ -191,11 +193,13 @@ def test_validate_allowed_values_empty_dataframe(spark):
 
 
 def test_validate_allowed_values_all_values_null(spark):
+    schema = StructType([StructField("eval_set", StringType(), True)])
     df = spark.createDataFrame(
         [
             (None),
             (None),
-        ]
+        ],
+        schema=schema,
     )
 
     contract = {
