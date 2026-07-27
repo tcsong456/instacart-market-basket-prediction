@@ -1,6 +1,12 @@
 import pytest
 from pyspark.sql import Row
-from pyspark.sql.types import ArrayType, StringType, StructField, StructType
+from pyspark.sql.types import (
+    ArrayType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 from instacart_etl_rnn.validation.array_length import validate_array_lengths
 from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
@@ -116,6 +122,13 @@ def test_validate_array_length_all_fail(spark):
 
 
 def test_validate_array_length_null_ignored(spark):
+    schema = StructType(
+        [
+            StructField("order_history", ArrayType(StringType()), True),
+            StructField("product_history", ArrayType(IntegerType()), True),
+            StructField("aisle_history", ArrayType(IntegerType()), True),
+        ]
+    )
     df = spark.createDataFrame(
         [
             (
@@ -134,7 +147,7 @@ def test_validate_array_length_null_ignored(spark):
                 None,
             ),
         ],
-        ["order_history", "product_history", "aisle_history"],
+        schema=schema,
     )
 
     contract = {
