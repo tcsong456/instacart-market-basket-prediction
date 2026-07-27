@@ -149,7 +149,7 @@ def test_validate_column_datatype_array_integer_success(spark):
     schema = StructType(
         [
             StructField("product_history", ArrayType(IntegerType()), nullable=True),
-            StructField("aisle_history", ArrayType(BooleanType), nullable=True),
+            StructField("aisle_history", ArrayType(BooleanType()), nullable=True),
         ]
     )
 
