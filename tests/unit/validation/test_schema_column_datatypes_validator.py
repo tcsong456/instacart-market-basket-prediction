@@ -1,5 +1,7 @@
 import pytest
 from pyspark.sql.types import (
+    ArrayType,
+    BooleanType,
     ByteType,
     DoubleType,
     FloatType,
@@ -25,6 +27,11 @@ from instacart_etl_rnn.validation.schema import (
         (DoubleType(), "douBle", True),
         (StringType(), "STRING", True),
         (FloatType(), "integer", False),
+        (ArrayType(IntegerType()), "array<integer>", True),
+        (ArrayType(BooleanType()), "array<bool>", True),
+        (ArrayType(StringType()), "array<integer>", False),
+        (BooleanType(), "array<bool>", False),
+        (ArrayType(BooleanType()), "array<boolean>", True),
     ],
 )
 def test_is_type_compatible(
@@ -38,6 +45,24 @@ def test_is_type_compatible(
 def test_is_type_compatible_value_error():
     with pytest.raises(ValueError, match="Unsupported contract type"):
         _is_type_compatible(IntegerType(), "bigint")
+
+
+def test_is_type_compatible_array_unknown_type():
+    with pytest.raises(ValueError, match="Unsupported contract type"):
+        _is_type_compatible(
+            ArrayType(IntegerType()),
+            "array<uuid>",
+        )
+
+
+def test_is_type_compatible_array_empty_type():
+    with pytest.raises(
+        ValueError, match="Array contract type must specify an element type"
+    ):
+        _is_type_compatible(
+            ArrayType(IntegerType()),
+            "array<>",
+        )
 
 
 @pytest.mark.parametrize(
@@ -91,7 +116,6 @@ def test_validate_multiple_column_datatype(spark):
             {"name": "test_column_2", "type": "integer"},
             {"name": "test_column_3", "type": "float"},
             {"name": "test_column_4", "type": "double"},
-            {"name": "test_column_5", "type": "boolean"},
         ]
     }
 
@@ -119,4 +143,146 @@ def test_validate_multiple_column_datatype(spark):
             "expected_datatype": "float",
         },
     ]
-    assert result.metadata["skipped_missing_columns"] == ["test_column_5"]
+
+
+def test_validate_column_datatype_array_integer_success(spark):
+    schema = StructType(
+        [
+            StructField("product_history", ArrayType(IntegerType()), nullable=True),
+            StructField("aisle_history", ArrayType(BooleanType), nullable=True),
+        ]
+    )
+
+    df = spark.createDataFrame(
+        [
+            (
+                [1, 2, 3],
+                [True, True],
+            ),
+            (
+                [4, 5],
+                [],
+            ),
+            ([], [False, True]),
+        ],
+        schema=schema,
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_history",
+                "type": "array<integer>",
+            },
+            {
+                "name": "aisle_history",
+                "type": "array<bool>",
+            },
+        ]
+    }
+
+    result = validate_column_datatype(
+        df,
+        contract=contract,
+    )
+
+    assert result.passed is True
+    assert result.failed_count == 0
+
+
+def test_validate_column_datatype_array_type_mismatch(spark):
+    schema = StructType(
+        [StructField("product_history", ArrayType(StringType()), nullable=True)]
+    )
+
+    df = spark.createDataFrame(
+        [
+            (["a", "b"],),
+        ],
+        schema=schema,
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_history",
+                "type": "array<integer>",
+            }
+        ]
+    }
+
+    result = validate_column_datatype(
+        df,
+        contract=contract,
+    )
+
+    assert result.passed is False
+    assert result.failed_count == 1
+
+    mismatch = result.metadata["mismatches"][0]
+
+    assert mismatch["column_name"] == "product_history"
+    assert mismatch["expected_datatype"] == "array<integer>"
+    assert mismatch["actual_datatype"] == ArrayType(StringType())
+
+
+def test_validate_column_datatype_integer_not_array(spark):
+    schema = StructType([StructField("product_history", IntegerType(), nullable=True)])
+
+    df = spark.createDataFrame(
+        [
+            (1,),
+            (2,),
+        ],
+        schema=schema,
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_history",
+                "type": "array<integer>",
+            }
+        ]
+    }
+
+    result = validate_column_datatype(
+        df,
+        contract=contract,
+    )
+
+    assert not result.passed
+    assert result.failed_count == 1
+    assert result.message == (
+        "Incompatible column data types: "
+        "product_history: expected array<integer>, but got IntegerType()"
+    )
+
+
+def test_validate_column_datatype_nested_array(spark):
+    schema = StructType(
+        [StructField("matrix", ArrayType(ArrayType(IntegerType())), False)]
+    )
+
+    df = spark.createDataFrame(
+        [
+            ([[1, 2], [3]],),
+        ],
+        schema=schema,
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "matrix",
+                "type": "array<array<integer>>",
+            }
+        ]
+    }
+
+    result = validate_column_datatype(
+        df,
+        contract=contract,
+    )
+
+    assert result.passed

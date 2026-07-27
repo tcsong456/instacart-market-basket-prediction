@@ -2,6 +2,7 @@ from typing import Any
 
 from pyspark.sql import DataFrame
 from pyspark.sql.types import (
+    ArrayType,
     BooleanType,
     ByteType,
     DataType,
@@ -17,6 +18,7 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
+from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
 from instacart_etl_rnn.validation.models import ValidationResult
 
 
@@ -74,8 +76,26 @@ def _is_type_compatible(
 ) -> bool:
     normalized_type = contract_type.strip().lower()
 
+    if normalized_type.startswith("array<") and normalized_type.endswith(">"):
+        if not isinstance(actual_type, ArrayType):
+            return False
+
+        element_contract_type = normalized_type[len("array<") : -1]
+        if not element_contract_type:
+            raise InvalidConstraintError(
+                f"Array contract type must specify an element type: {contract_type!r}"
+            )
+
+        return _is_type_compatible(actual_type.elementType, element_contract_type)
+
     compatibility_map = {
         "integer": (
+            ByteType,
+            ShortType,
+            IntegerType,
+            LongType,
+        ),
+        "int": (
             ByteType,
             ShortType,
             IntegerType,
@@ -88,7 +108,9 @@ def _is_type_compatible(
         ),
         "number": (NumericType,),
         "string": (StringType,),
+        "str": (StringType,),
         "boolean": (BooleanType,),
+        "bool": (BooleanType,),
         "date": (DateType,),
         "timestamp": (TimestampType,),
         "decimal": (DecimalType,),
@@ -107,16 +129,12 @@ def validate_column_datatype(
 ) -> ValidationResult:
     actual_schemas = {field.name: field.dataType for field in df.schema.fields}
 
-    mismatches, skipped_columns = [], []
+    mismatches = []
     for contract_schema in contract["schema"]:
         contract_datatype = contract_schema["type"]
         contract_col_name = contract_schema["name"]
 
         actual_datatype = actual_schemas.get(contract_col_name)
-        if actual_datatype is None:
-            skipped_columns.append(contract_col_name)
-            continue
-
         if not _is_type_compatible(actual_datatype, contract_datatype):
             mismatches.append(
                 {
@@ -148,8 +166,5 @@ def validate_column_datatype(
         message=message,
         failed_count=len(mismatches),
         invalid_rows=None,
-        metadata={
-            "mismatches": mismatches,
-            "skipped_missing_columns": skipped_columns,
-        },
+        metadata={"mismatches": mismatches},
     )
