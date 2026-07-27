@@ -17,7 +17,7 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-from instacart_etl.validation.models import ValidationResult
+from instacart_etl_rnn.validation.models import ValidationResult
 
 
 def validate_column_presence(

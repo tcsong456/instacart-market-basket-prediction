@@ -4,7 +4,7 @@ from functools import reduce
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-from instacart_etl.validation.models import ValidationResult
+from instacart_etl_rnn.validation.models import ValidationResult
 
 
 def validate_uniqueness(df: DataFrame, *, columns: list[str]) -> ValidationResult:

@@ -4,7 +4,7 @@ from typing import Any
 import yaml
 from yaml import YAMLError
 
-from instacart_etl.validation.exceptions import InvalidContractError
+from instacart_etl_rnn.validation.exceptions import InvalidContractError
 
 
 def load_contract(contract_path: str | Path) -> dict[str, Any]:

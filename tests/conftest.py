@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from instacart_etl.common.spark import create_spark_session
+from instacart_etl_rnn.common.spark import create_spark_session
 
 
 @pytest.fixture(scope="session")

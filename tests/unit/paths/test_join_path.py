@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from instacart_etl.common.paths import join_path
+from instacart_etl_rnn.common.paths import join_path
 
 
 @pytest.mark.parametrize(

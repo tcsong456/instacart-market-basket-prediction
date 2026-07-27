@@ -5,8 +5,8 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from instacart_etl.validation.exceptions import InvalidConstraintError
-from instacart_etl.validation.null import validate_nullability
+from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
+from instacart_etl_rnn.validation.null import validate_nullability
 
 
 def test_nullability_validator_passes_non_nullable_columns(spark):

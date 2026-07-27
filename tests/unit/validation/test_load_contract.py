@@ -1,8 +1,8 @@
 import pytest
 import yaml
 
-from instacart_etl.validation.exceptions import InvalidContractError
-from instacart_etl.validation.loader import load_contract
+from instacart_etl_rnn.validation.exceptions import InvalidContractError
+from instacart_etl_rnn.validation.loader import load_contract
 
 
 def test_load_contract_returns_parsed_contract(tmp_path):
