@@ -10,7 +10,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from instacart_etl.validation.schema import (
+from instacart_etl_rnn.validation.schema import (
     _is_type_compatible,
     validate_column_datatype,
 )

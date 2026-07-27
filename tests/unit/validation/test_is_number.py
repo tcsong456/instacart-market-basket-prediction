@@ -1,6 +1,6 @@
 import pytest
 
-from instacart_etl.validation.utils import is_number
+from instacart_etl_rnn.validation.utils import is_number
 
 
 @pytest.mark.parametrize(

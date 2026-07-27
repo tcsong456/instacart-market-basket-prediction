@@ -1,6 +1,6 @@
 import pandas as pd
 
-from instacart_etl.sample.build_sample_dataset import build_sample_dataset
+from instacart_etl_rnn.sample.build_sample_dataset import build_sample_dataset
 
 
 def _sort_product_order(df: pd.DataFrame):

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from instacart_etl.sample.build_sample_dataset import (
+from instacart_etl_rnn.sample.build_sample_dataset import (
     LOOKUP_FILES,
     copy_lookup_files,
     filter_orders_by_users,

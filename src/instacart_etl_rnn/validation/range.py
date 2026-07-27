@@ -3,9 +3,9 @@ from typing import Any
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 
-from instacart_etl.validation.exceptions import InvalidConstraintError
-from instacart_etl.validation.models import ValidationResult
-from instacart_etl.validation.utils import is_number
+from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
+from instacart_etl_rnn.validation.models import ValidationResult
+from instacart_etl_rnn.validation.utils import is_number
 
 
 def _build_invalid_condition(

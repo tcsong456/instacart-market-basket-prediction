@@ -1,8 +1,8 @@
 import pytest
 from pyspark.sql.types import StringType, StructField, StructType
 
-from instacart_etl.validation.allowed_values import validate_allowed_values
-from instacart_etl.validation.exceptions import InvalidConstraintError
+from instacart_etl_rnn.validation.allowed_values import validate_allowed_values
+from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
 
 
 def test_allowed_values_validator_passes_valid_values(spark):

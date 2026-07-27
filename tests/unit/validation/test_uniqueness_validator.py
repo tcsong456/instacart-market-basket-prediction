@@ -1,7 +1,7 @@
 import pytest
 from pyspark.sql.types import LongType, StructField, StructType
 
-from instacart_etl.validation.unique import validate_uniqueness
+from instacart_etl_rnn.validation.unique import validate_uniqueness
 
 
 def test_validate_uniqueness_passes_when_values_are_unique(spark):

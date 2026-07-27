@@ -1,7 +1,7 @@
 import pytest
 from pyspark.sql import Row
 
-from instacart_etl.validation.schema import validate_column_presence
+from instacart_etl_rnn.validation.schema import validate_column_presence
 
 
 def build_contract(allow_extra_columns: bool = False):
