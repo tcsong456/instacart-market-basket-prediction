@@ -484,15 +484,13 @@ def test_validate_foreign_keys_empty_dataframes(
     parent_df = spark.createDataFrame(parent_data, schema=schema)
 
     contract = {
-        "relationships": {
-            [
-                {
-                    "type": "foreign_key",
-                    "child_columns": ["order_id"],
-                    "parent": {"dataset": "orders", "columns": ["order_id"]},
-                }
-            ]
-        }
+        "relationships": [
+            {
+                "type": "foreign_key",
+                "child_columns": ["order_id"],
+                "parent": {"dataset": "orders", "columns": ["order_id"]},
+            }
+        ]
     }
 
     result = validate_foreign_keys(
