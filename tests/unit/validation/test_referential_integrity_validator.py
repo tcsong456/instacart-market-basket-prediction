@@ -455,3 +455,47 @@ def test_validate_foreign_keys_invalid_rows_limit(spark):
     assert result.invalid_rows.count() == 20
     invalid_rows = {row["order_id"] for row in result.invalid_rows.collect()}
     assert set(invalid_rows).issubset(range(50))
+
+
+@pytest.mark.parametrize(
+    ("child_data", "parent_data", "schema", "passed", "failed_count"),
+    [
+        (
+            [],
+            [(1,), (2,)],
+            StructType([StructField("order_id", IntegerType(), True)]),
+            True,
+            0,
+        ),
+        (
+            [(1,), (2,), (3,)],
+            [],
+            StructType([StructField("order_id", IntegerType(), True)]),
+            False,
+            3,
+        ),
+        ([], [], StructType([StructField("order_id", IntegerType(), True)]), True, 0),
+    ],
+)
+def test_validate_foreign_keys_empty_dataframes(
+    spark, child_data, parent_data, schema, passed, failed_count
+):
+    child_df = spark.createDataFrame(child_data, schema=schema)
+    parent_df = spark.createDataFrame(parent_data, schema=schema)
+
+    contract = {
+        "relationships": [
+            {
+                "type": "foreign_key",
+                "child_columns": ["order_id"],
+                "parent": {"dataset": "orders", "columns": ["order_id"]},
+            }
+        ]
+    }
+
+    result = validate_foreign_keys(
+        child_df=child_df, datasets={"orders": parent_df}, contract=contract
+    )[0]
+
+    assert result.passed is passed
+    assert result.failed_count == failed_count
