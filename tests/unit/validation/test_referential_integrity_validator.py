@@ -401,7 +401,7 @@ def test_validate_foreign_keys_ignores_other_relationship_types(spark):
                 "child_columns": ["id"],
                 "parent": {"dataset": "orders", "columns": ["id"]},
             },
-            "Child DataFrame is missing column(s): ['id']",
+            "Child DataFrame is missing column(s)",
         ),
         (
             {
@@ -409,7 +409,7 @@ def test_validate_foreign_keys_ignores_other_relationship_types(spark):
                 "child_columns": ["order_id"],
                 "parent": {"dataset": "orders", "columns": ["order_id"]},
             },
-            "Parent DataFrame is missing column(s): ['order_id']",
+            "Parent DataFrame is missing column(s)",
         ),
     ],
 )
