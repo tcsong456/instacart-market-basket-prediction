@@ -88,3 +88,32 @@ def tiny_fake_testset_csv(raw_dir):
     departments.to_csv(raw_dir / "departments.csv", index=False)
 
     return raw_dir
+
+
+@pytest.fixture
+def order_products_contract():
+    return {
+        "dataset": {
+            "name": "order_products",
+        },
+        "relationships": [
+            {
+                "name": "order_products_orders_fk",
+                "type": "foreign_key",
+                "child_columns": ["order_id"],
+                "parent": {
+                    "dataset": "orders",
+                    "columns": ["order_id"],
+                },
+            },
+            {
+                "name": "order_products_products_fk",
+                "type": "foreign_key",
+                "child_columns": ["product_id"],
+                "parent": {
+                    "dataset": "products",
+                    "columns": ["product_id"],
+                },
+            },
+        ],
+    }
