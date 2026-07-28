@@ -485,9 +485,13 @@ def test_validate_foreign_keys_empty_dataframes(
 
     contract = {
         "relationships": {
-            "type": "foreign_key",
-            "child_columns": ["order_id"],
-            "parent": {"dataset": "orders", "columns": ["order_id"]},
+            [
+                {
+                    "type": "foreign_key",
+                    "child_columns": ["order_id"],
+                    "parent": {"dataset": "orders", "columns": ["order_id"]},
+                }
+            ]
         }
     }
 
