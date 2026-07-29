@@ -124,9 +124,9 @@ def validate_row_logic(
                 f"Rule: {rule['name']} does not have its expression"
             )
 
-        invalid_conditions.setdefault(
-            rule["name"], ~F.coalesce(F.expr(rule["expression"]), F.lit(False))
-        )
+        rule_result = F.expr(rule["expression"])
+        invalid_condition = rule_result.isNotNull() & ~rule_result
+        invalid_conditions.update({rule["name"]: invalid_condition})
 
     failed_counts = derived_df.agg(
         *[
