@@ -378,8 +378,8 @@ def test_group_aggregate_fields_groups_same_partitions():
                     "user_distinct_order_number_count"
                 ),
             },
-            0,
-            True,
+            3,
+            False,
             {
                 (1, 1, "prior", None),
                 (1, 3, "prior", 20),
@@ -397,10 +397,10 @@ def test_validate_row_handles_null_rule_results(
     df = spark.createDataFrame(
         [
             (1, 1, "prior", None),
-            (None, None, "prior", 5),
+            (None, None, "prior", 5.0),
             (None, 2, None, None),
-            (1, 3, "prior", 20),
-            (1, None, None, 10),
+            (1, 3, "prior", 20.0),
+            (1, None, None, 10.0),
         ],
         schema=schema,
     )
