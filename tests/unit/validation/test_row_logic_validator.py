@@ -254,8 +254,9 @@ def test_validate_row_logic_empty_rule(spark, orders_schema):
             {
                 "rules": [
                     {
-                        "expression": ("order_number <> 1 OR "
-                                       "days_since_prior_order is NULL")
+                        "expression": (
+                            "order_number <> 1 OR days_since_prior_order is NULL"
+                        )
                     }
                 ]
             },
