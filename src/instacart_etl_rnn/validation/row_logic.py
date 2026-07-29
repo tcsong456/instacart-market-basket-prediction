@@ -32,7 +32,7 @@ def _build_aggregate_expression(field: dict[str, Any]) -> Column:
         return F.sum(column)
     elif aggregation == "conditional_count":
         condition = F.coalesce(F.expr(field["condition"]), F.lit(False))
-        return F.SUM(F.when(condition, 1).otherwise(0))
+        return F.sum(F.when(condition, 1).otherwise(0))
     elif aggregation == "count_distinct":
         return F.countDistinct(column)
     elif aggregation == "count":
@@ -130,7 +130,7 @@ def validate_row_logic(
 
     failed_counts = derived_df.agg(
         *[
-            F.SUM(F.when(rule_condition, 1).otherwise(0)).alias(rule_name)
+            F.sum(F.when(rule_condition, 1).otherwise(0)).alias(rule_name)
             for rule_name, rule_condition in invalid_conditions.items()
         ]
     ).first()

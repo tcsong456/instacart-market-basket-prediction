@@ -1,7 +1,10 @@
 import pytest
 
 from instacart_etl_rnn.validation.exceptions import InvalidContractError
-from instacart_etl_rnn.validation.row_logic import validate_row_logic
+from instacart_etl_rnn.validation.row_logic import (
+    _group_aggregate_fields,
+    validate_row_logic,
+)
 
 
 def test_validate_row_logic_all_rules_pass(
@@ -88,9 +91,9 @@ def test_validate_row_logic_returns_correct_invalid_rows(
     df = spark.createDataFrame(
         [
             (1, 1, "prior", None),
-            (1, 3, "train", 5),
-            (2, 1, "prior", 10),
-            (2, 2, "test", 20),
+            (1, 3, "train", 5.0),
+            (2, 1, "prior", 10.0),
+            (2, 2, "test", 20.0),
         ],
         schema=orders_schema,
     )
@@ -209,7 +212,8 @@ def test_validate_row_logic_empty_rule(spark, orders_schema):
                         "type": "integer",
                         "column": "order_number",
                     }
-                ]
+                ],
+                "rules": [{"name": "dummy_rule"}],
             },
             "Missing both aggregation and expression.",
         ),
@@ -221,7 +225,8 @@ def test_validate_row_logic_empty_rule(spark, orders_schema):
                         "type": "integer",
                         "aggregation": "min_max",
                     }
-                ]
+                ],
+                "rules": [{"name": "dummy_rule"}],
             },
             "Aggregation type",
         ),
@@ -233,7 +238,8 @@ def test_validate_row_logic_empty_rule(spark, orders_schema):
                         "type": "integer",
                         "aggregation": "min",
                     }
-                ]
+                ],
+                "rules": [{"name": "dummy_rule"}],
             },
             "does not provide its aggregated column",
         ),
@@ -246,7 +252,8 @@ def test_validate_row_logic_empty_rule(spark, orders_schema):
                         "aggregation": "min",
                         "expression": "order_number = user_max_order_number",
                     }
-                ]
+                ],
+                "rules": [{"name": "dummy_rule"}],
             },
             "Only one of aggregation or expression should be given",
         ),
@@ -275,3 +282,42 @@ def test_validate_row_logic_invalid_contract(
 
     with pytest.raises(InvalidContractError, match=exception_message):
         validate_row_logic(df, contract)
+
+
+def test_group_aggregate_fields_groups_same_partitions():
+    fields = [
+        {
+            "name": "user_min_order_number",
+            "aggregation": "min",
+            "column": "order_number",
+            "partition_by": ["user_id"],
+        },
+        {
+            "name": "user_max_order_number",
+            "aggregation": "max",
+            "column": "order_number",
+            "partition_by": ["user_id"],
+        },
+        {
+            "name": "product_order_count",
+            "aggregation": "count",
+            "column": "order_id",
+            "partition_by": ["product_id"],
+        },
+    ]
+
+    grouped = _group_aggregate_fields(fields)
+
+    assert set(grouped) == {
+        ("user_id",),
+        ("product_id",),
+    }
+
+    assert [field["name"] for field in grouped[("user_id",)]] == [
+        "user_min_order_number",
+        "user_max_order_number",
+    ]
+
+    assert [field["name"] for field in grouped[("product_id",)]] == [
+        "product_order_count",
+    ]
