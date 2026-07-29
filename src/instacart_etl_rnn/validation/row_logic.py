@@ -123,10 +123,9 @@ def validate_row_logic(
             raise InvalidContractError(
                 f"Rule: {rule['name']} does not have its expression"
             )
-
-        invalid_conditions.setdefault(
-            rule["name"], ~F.coalesce(F.expr(rule["expression"]), F.lit(False))
-        )
+        
+        rule_result = F.expr(rule["expression"])
+        invalid_conditions = rule_result.isNotNull() & ~rule_result
 
     failed_counts = derived_df.agg(
         *[

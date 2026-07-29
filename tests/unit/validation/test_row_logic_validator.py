@@ -321,3 +321,104 @@ def test_group_aggregate_fields_groups_same_partitions():
     assert [field["name"] for field in grouped[("product_id",)]] == [
         "product_order_count",
     ]
+
+
+@pytest.mark.parametrize(
+    ("rule", "failed_count", "passed", "failed_rows"),
+    [
+        (
+            {
+                "name": "first_order_has_no_prior_interval",
+                "expression": ("order_number <> 1 OR days_since_prior_order IS NULL"),
+            },
+            0,
+            True,
+            set(),
+        ),
+        (
+            {
+                "name": "later_orders_must_have_prior_interval",
+                "expression": (
+                    "order_number = 1 OR days_since_prior_order IS NOT NULL"
+                ),
+            },
+            1,
+            False,
+            {(None, 2, None, None)},
+        ),
+        (
+            {
+                "name": "last_order_per_user_is_train_or_test",
+                "expression": ("NOT is_last_order OR eval_set IN ('train', 'test')"),
+            },
+            1,
+            False,
+            {(1, 3, "prior", 20)},
+        ),
+        (
+            {
+                "name": "only_one_train_or_test_per_user",
+                "expression": "train_or_test_count = 1",
+            },
+            5,
+            False,
+            {
+                (1, 1, "prior", None),
+                (None, None, "prior", 5),
+                (None, 2, None, None),
+                (1, 3, "prior", 20),
+                (1, None, None, 10),
+            },
+        ),
+        (
+            {
+                "name": "contiguous_order_numbers",
+                "expression": (
+                    "user_min_order_number = 1 "
+                    "AND user_max_order_number = "
+                    "user_distinct_order_number_count"
+                ),
+            },
+            0,
+            True,
+            set(),
+        ),
+    ],
+)
+def test_validate_row_handles_null_rule_results(
+    spark, orders_schema, row_logic_contract, rule, failed_count, passed, failed_rows
+):
+    df = spark.createDataFrame(
+        [
+            (1, 1, "prior", None),
+            (None, None, "prior", 5),
+            (None, 2, None, None),
+            (1, 3, "prior", 20),
+            (1, None, None, 10),
+        ],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": row_logic_contract["derived_fields"],
+        "row_constraints": [rule],
+    }
+
+    result = validate_row_logic(df, contract=contract)[0]
+
+    assert result.passed is passed
+    assert result.failed_count == failed_count
+    invalid_rows = (
+        {
+            (
+                row["user_id"],
+                row["order_number"],
+                row["eval_set"],
+                row["days_since_prior_order"],
+            )
+            for row in result.invalid_rows.collect()
+        }
+        if not passed
+        else set()
+    )
+    assert invalid_rows == failed_rows
