@@ -75,44 +75,41 @@ schema:
       maximum: 30
   
 derived_fields:
-  - name: is_last_order
-    type: boolean
-    description: >
-      Indicates whether the row has the highest order_number
-      for its user.
-    expression: >
-      order_number = MAX(order_number) OVER (
-                      PARTITION BY user_id
-                    )
-  
   - name: train_or_test_count
     type: integer
     description: >
       Number of train or test orders belonging to the user.
-    expression:
-      SUM(
-        CASE
-        WHEN eval_set IN ('train', 'test')
-        THEN 1 ELSE 0
-        END
-      ) OVER (
-        PARTITION by user_id
-      )
+    aggregation: conditional_count
+    condition: >
+      eval_set IN ('train', 'test')
+    parrition_by:
+      - user_id
   
-  - name: uesr_min_order_number
+  - name: user_min_order_number
     type: integer
-    expression: >
-      MIN(order_number) OVER (PARTITION BY user_id)
+    aggregation: min
+    column: order_number
+    partition_by:
+      - user_id
     
   - name: user_max_order_number
     type: integer
-    expression: >
-      MAX(order_number) OVER (PARTITION BY user_id)
+    aggregation: max
+    column: order_number
+    partition_by:
+      - user_id
   
   - name: user_distinct_order_number_count
     type: integer
+    aggregation: count_distinct
+    column: order_number
+    parrition_by:
+      - user_id
+  
+  - name: is_last_order
+    type: boolean
     expression: >
-      COUNT(DISTINCT order_number) OVER (PARTITION BY user_id)
+      order_number = user_max_order_number
 
 rules:
   - name: first_order_has_no_prior_interval
@@ -147,5 +144,5 @@ rules:
       Order numbers for each user must form a continuous
       sequence from 1 to the user's maximum order number.
     expression: >
-      uesr_min_order_number = 1
+      user_min_order_number = 1
       AND user_max_order_number = user_distinct_order_number_count

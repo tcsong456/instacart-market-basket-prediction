@@ -1,5 +1,12 @@
 import pandas as pd
 import pytest
+from pyspark.sql.types import (
+    DoubleType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 from instacart_etl_rnn.common.spark import create_spark_session
 
@@ -117,3 +124,79 @@ def order_products_contract():
             },
         ],
     }
+
+
+@pytest.fixture
+def row_logic_contract() -> dict:
+    return {
+        "derived_fields": [
+            {
+                "name": "train_or_test_count",
+                "aggregation": "conditional_count",
+                "condition": "eval_set IN ('train', 'test')",
+                "partition_by": ["user_id"],
+            },
+            {
+                "name": "user_min_order_number",
+                "aggregation": "min",
+                "column": "order_number",
+                "partition_by": ["user_id"],
+            },
+            {
+                "name": "user_max_order_number",
+                "aggregation": "max",
+                "column": "order_number",
+                "partition_by": ["user_id"],
+            },
+            {
+                "name": "user_distinct_order_number_count",
+                "aggregation": "count_distinct",
+                "column": "order_number",
+                "partition_by": ["user_id"],
+            },
+            {
+                "name": "is_last_order",
+                "expression": ("order_number = user_max_order_number"),
+            },
+        ],
+        "rules": [
+            {
+                "name": "first_order_has_no_prior_interval",
+                "expression": ("order_number <> 1 OR days_since_prior_order IS NULL"),
+            },
+            {
+                "name": "later_orders_must_have_prior_interval",
+                "expression": (
+                    "order_number = 1 OR days_since_prior_order IS NOT NULL"
+                ),
+            },
+            {
+                "name": "last_order_per_user_is_train_or_test",
+                "expression": ("NOT is_last_order OR eval_set IN ('train', 'test')"),
+            },
+            {
+                "name": "only_one_train_or_test_per_user",
+                "expression": "train_or_test_count = 1",
+            },
+            {
+                "name": "contiguous_order_numbers",
+                "expression": (
+                    "user_min_order_number = 1 "
+                    "AND user_max_order_number = "
+                    "user_distinct_order_number_count"
+                ),
+            },
+        ],
+    }
+
+
+@pytest.fixture
+def orders_schema():
+    return StructType(
+        [
+            StructField("user_id", IntegerType(), nullable=False),
+            StructField("order_number", IntegerType(), nullable=True),
+            StructField("eval_set", StringType(), nullable=True),
+            StructField("days_since_prior_order", DoubleType(), nullable=True),
+        ]
+    )
