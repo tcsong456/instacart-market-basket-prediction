@@ -123,7 +123,7 @@ def validate_row_logic(
             raise InvalidContractError(
                 f"Rule: {rule['name']} does not have its expression"
             )
-        
+
         rule_result = F.expr(rule["expression"])
         invalid_conditions = rule_result.isNotNull() & ~rule_result
 
