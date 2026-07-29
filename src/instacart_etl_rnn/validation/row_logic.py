@@ -125,7 +125,8 @@ def validate_row_logic(
             )
 
         rule_result = F.expr(rule["expression"])
-        invalid_conditions = rule_result.isNotNull() & ~rule_result
+        invalid_condition = rule_result.isNotNull() & ~rule_result
+        invalid_conditions.update({rule["name"]: invalid_condition})
 
     failed_counts = derived_df.agg(
         *[

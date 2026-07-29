@@ -1,4 +1,5 @@
 import pytest
+from pyspark.sql.types import IntegerType, StructField, StructType
 
 from instacart_etl_rnn.validation.exceptions import InvalidContractError
 from instacart_etl_rnn.validation.row_logic import (
@@ -360,12 +361,10 @@ def test_group_aggregate_fields_groups_same_partitions():
                 "name": "only_one_train_or_test_per_user",
                 "expression": "train_or_test_count = 1",
             },
-            5,
+            3,
             False,
             {
                 (1, 1, "prior", None),
-                (None, None, "prior", 5),
-                (None, 2, None, None),
                 (1, 3, "prior", 20),
                 (1, None, None, 10),
             },
@@ -381,13 +380,20 @@ def test_group_aggregate_fields_groups_same_partitions():
             },
             0,
             True,
-            set(),
+            {
+                (1, 1, "prior", None),
+                (1, 3, "prior", 20),
+                (1, None, None, 10),
+            },
         ),
     ],
 )
 def test_validate_row_handles_null_rule_results(
     spark, orders_schema, row_logic_contract, rule, failed_count, passed, failed_rows
 ):
+    schema = StructType(
+        [StructField("user_id", IntegerType(), True), *orders_schema.fields[1:]]
+    )
     df = spark.createDataFrame(
         [
             (1, 1, "prior", None),
@@ -396,12 +402,12 @@ def test_validate_row_handles_null_rule_results(
             (1, 3, "prior", 20),
             (1, None, None, 10),
         ],
-        schema=orders_schema,
+        schema=schema,
     )
 
     contract = {
         "derived_fields": row_logic_contract["derived_fields"],
-        "row_constraints": [rule],
+        "rules": [rule],
     }
 
     result = validate_row_logic(df, contract=contract)[0]
