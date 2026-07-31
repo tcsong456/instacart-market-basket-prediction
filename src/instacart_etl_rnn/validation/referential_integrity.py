@@ -142,7 +142,7 @@ def _validate_referential_integrity(
     parent_key = ", ".join(parent_columns)
 
     return ValidationResult(
-        rule_name=("referential_integrity." + ", ".join(child_columns)),
+        rule_name=(", ".join(child_columns) + ".referential_integrity"),
         category="referential_integrity",
         passed=passed,
         message=(
