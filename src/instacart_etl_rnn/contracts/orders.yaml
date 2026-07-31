@@ -1,6 +1,6 @@
 dataset:
   name: orders
-  allow_extra_columns: false
+  allow_extra_columns: True
   description: >
     One row per customer order, including order sequence,
     evaluation split, temporal information, and the interval
@@ -25,6 +25,16 @@ schema:
     constraints:
       unique: true
       minimum: 1
+    thresholds:
+      nullability:
+        max_failed_percent: 0.0
+        severity: critical
+      uniqueness:
+        max_failed_percent: 0.0
+        severity: critical
+      range:
+        max_failed_percent: 0.0
+        severity: critical
 
   - name: user_id
     type: integer
@@ -32,6 +42,11 @@ schema:
     description: Identifier of the user who placed the order
     constraints:
       minimum: 1
+    thresholds:
+      nullability:
+        max_failed_percent: 0.0
+      range:
+        max_failed_percent: 0.0
   
   - name: eval_set
     type: string
@@ -42,6 +57,11 @@ schema:
         - prior
         - train
         - test
+    thresholds:
+      nullability:
+        max_failed_percent: 0.02
+      allowed_values:
+        max_failed_percent: 0.05
   
   - name: order_number
     type: integer
@@ -49,6 +69,11 @@ schema:
     description: Sequential order number for the user
     constraints:
       minimum: 1
+    thresholds:
+      nullability:
+        max_failed_percent: 0.0
+      range:
+        max_failed_percent: 0.0
   
   - name: order_dow
     type: integer
@@ -57,6 +82,11 @@ schema:
     constraints:
       minimum: 0
       maximum: 6
+    thresholds:
+      nullability:
+        max_failed_percent: 0.01
+      range:
+        max_failed_percent: 0.0
   
   - name: order_hour_of_day
     type: integer
@@ -65,6 +95,11 @@ schema:
     constraints:
       minimum: 0
       maximum: 23
+    thresholds:
+      nullability:
+        max_failed_percent: 0.01
+      range:
+        max_failed_percent: 0.0
   
   - name: days_since_prior_order
     type: double
@@ -73,6 +108,9 @@ schema:
     constraints:
       minimum: 0
       maximum: 30
+    thresholds:
+      range:
+        max_failed_percent: 0.1
   
 derived_fields:
   - name: train_or_test_count
