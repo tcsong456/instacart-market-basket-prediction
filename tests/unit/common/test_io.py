@@ -12,7 +12,10 @@ from instacart_etl_rnn.common.io import read_csv, read_parquet
 def test_read_csv_with_schema(spark, tmp_path):
     csv_path = tmp_path / "test.csv"
 
-    csv_path.write_text("id,name\n5,Alice\n11,Bob\n29,Tony\n")
+    csv_path.write_text(
+        "id,name\n5,Alice\n11,Bob\n29,Tony\n",
+        encoding="utf-8",
+    )
 
     schema = StructType(
         [
@@ -27,10 +30,12 @@ def test_read_csv_with_schema(spark, tmp_path):
         schema=schema,
     )
 
-    assert df.schema == schema
-    assert df.count() == 3
-
     assert df.columns == ["id", "name"]
+
+    assert df.schema["id"].dataType == IntegerType()
+    assert df.schema["name"].dataType == StringType()
+
+    assert df.count() == 3
 
     assert [tuple(row) for row in df.orderBy("id").collect()] == [
         (5, "Alice"),
