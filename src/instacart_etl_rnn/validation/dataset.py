@@ -146,45 +146,23 @@ def _apply_thresholds(
     return results
 
 
-def _apply_logic_thresholds(
-    results: list[ValidationResult],
-    total_rows: int,
-    *,
-    contract: dict[str, Any],
+def _apply_strict_thresholds(
+    results: list[ValidationResult], total_rows: int, prefix: str = ""
 ) -> list[ValidationResult]:
-    for rule in contract.get("rules", []):
-        rule_name = rule["name"]
-        for i, result in enumerate(results):
-            if rule_name == result.rule_name:
-                failed_ratio = (result.failed_count / total_rows) * 100
-                if failed_ratio > 0:
-                    result.message = (
-                        f"business rule: {result.rule_name} "
-                        f"failed {result.failed_count} rows, "
-                        f"{failed_ratio:.2f}% of total rows"
-                    )
-                    result.severity = ValidationSeverity.CRITICAL
-                    result.status = ValidationStatus.FAILED
+    for result in results:
+        failed_count = result.failed_count
+        if failed_count == 0:
+            continue
 
-            results[i] = result
-
-    return results
-
-
-def _apply_ri_thresholds(
-    results: list[ValidationResult], total_rows: int
-) -> list[ValidationResult]:
-    for i, result in enumerate(results):
-        failed_ratio = (result.failed_count / total_rows) * 100
-        if failed_ratio > 0:
+        failed_percent = failed_count / total_rows * 100
+        if failed_percent > 0:
             result.message = (
-                f"RI_rule: {result.rule_name} failed {result.failed_count} rows, "
-                f"{failed_ratio:.2f}% of total rows"
+                f"{prefix} rule: {result.rule_name} "
+                f"failed {result.failed_count} rows, "
+                f"{failed_percent:.2f}% of total rows"
             )
             result.severity = ValidationSeverity.CRITICAL
             result.status = ValidationStatus.FAILED
-
-        results[i] = result
 
     return results
 
@@ -267,19 +245,18 @@ def validate_dataset(
     )
 
     results.extend(
-        _apply_ri_thresholds(
-            results=validate_foreign_keys(
-                df, contract=contract, datasets=reference_datasets
-            ),
+        _apply_strict_thresholds(
+            results=validate_foreign_keys(df, datasets=reference_datasets),
             total_rows=total_rows,
+            prefix="RI",
         )
     )
 
     results.extend(
-        _apply_logic_thresholds(
+        _apply_strict_thresholds(
             results=validate_row_logic(df, contract=contract),
-            contract=contract,
             total_rows=total_rows,
+            prefix="business",
         )
     )
 
