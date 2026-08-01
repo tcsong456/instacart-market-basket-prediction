@@ -20,10 +20,10 @@ class ValidationSeverity(str, Enum):
 
 @dataclass
 class ValidationResult:
-    rule_name: str
-    category: str
-    passed: bool
-    message: str
+    rule_name: str | None = None
+    category: str | None = None
+    passed: bool = False
+    message: str = ""
     failed_count: int = 0
     invalid_rows: DataFrame | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

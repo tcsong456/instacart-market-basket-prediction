@@ -59,9 +59,9 @@ schema:
         - test
     thresholds:
       nullability:
-        max_failed_percent: 0.02
+        max_failed_percent: 2.0
       allowed_values:
-        max_failed_percent: 0.05
+        max_failed_percent: 5.0
   
   - name: order_number
     type: integer
@@ -84,7 +84,7 @@ schema:
       maximum: 6
     thresholds:
       nullability:
-        max_failed_percent: 0.01
+        max_failed_percent: 1.0
       range:
         max_failed_percent: 0.0
   
@@ -97,7 +97,7 @@ schema:
       maximum: 23
     thresholds:
       nullability:
-        max_failed_percent: 0.01
+        max_failed_percent: 1.0
       range:
         max_failed_percent: 0.0
   
@@ -110,7 +110,7 @@ schema:
       maximum: 30
     thresholds:
       range:
-        max_failed_percent: 0.1
+        max_failed_percent: 10.0
   
 derived_fields:
   - name: train_or_test_count
