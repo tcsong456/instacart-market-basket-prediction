@@ -246,7 +246,9 @@ def validate_dataset(
 
     results.extend(
         _apply_strict_thresholds(
-            results=validate_foreign_keys(df, datasets=reference_datasets),
+            results=validate_foreign_keys(
+                child_df=df, datasets=reference_datasets, contract=contract
+            ),
             total_rows=total_rows,
             prefix="RI",
         )
@@ -279,7 +281,7 @@ def validate_dataset(
         raise DataValidationError(report)
     elif report.can_continue:
         logger.info(
-            "All column and contract rules are complied, "
+            "All column and contract rules passed, "
             "Dataset: %s has passed the data validation",
             dataset_name,
         )
