@@ -200,3 +200,28 @@ def orders_schema():
             StructField("days_since_prior_order", DoubleType(), nullable=True),
         ]
     )
+
+
+@pytest.fixture
+def apply_thresholds_contract():
+    return {
+        "schema": [
+            {
+                "name": "order_id",
+                "thresholds": {
+                    "range": {
+                        "max_failed_percent": 1.0,
+                        "severity": "error",
+                    },
+                    "uniqueness": {
+                        "max_failed_percent": 0.0,
+                        "severity": "critical",
+                    },
+                },
+            },
+            {
+                "name": "user_id",
+                "thresholds": {},
+            },
+        ]
+    }
