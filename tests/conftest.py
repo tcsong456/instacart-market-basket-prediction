@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 import pytest
 from pyspark.sql.types import (
@@ -9,6 +11,7 @@ from pyspark.sql.types import (
 )
 
 from instacart_etl_rnn.common.spark import create_spark_session
+from instacart_etl_rnn.validation.loader import load_contract
 
 
 @pytest.fixture(scope="session")
@@ -225,3 +228,88 @@ def apply_thresholds_contract():
             },
         ]
     }
+
+
+CONTRACT_PATH = (
+    Path(__file__).parent
+    / "integration"
+    / "validation"
+    / "contracts"
+    / "orders_test.yaml"
+)
+
+
+@pytest.fixture
+def validate_dataset_orders_contract():
+    return load_contract(CONTRACT_PATH)
+
+
+@pytest.fixture
+def validate_dataset_orders_schema():
+    return StructType(
+        [
+            StructField(
+                "order_id",
+                IntegerType(),
+                nullable=False,
+            ),
+            StructField(
+                "user_id",
+                IntegerType(),
+                nullable=False,
+            ),
+            StructField(
+                "eval_set",
+                StringType(),
+                nullable=False,
+            ),
+            StructField(
+                "order_number",
+                IntegerType(),
+                nullable=False,
+            ),
+            StructField(
+                "days_since_prior_order",
+                DoubleType(),
+                nullable=True,
+            ),
+        ]
+    )
+
+
+@pytest.fixture
+def validate_dataset_users_schema():
+    return StructType(
+        [
+            StructField(
+                "user_id",
+                IntegerType(),
+                nullable=False,
+            ),
+        ]
+    )
+
+
+@pytest.fixture
+def validate_dataset_orders_df(spark, validate_dataset_orders_schema):
+    return spark.createDataFrame(
+        [
+            (1, 1, "prior", 1, None),
+            (2, 1, "prior", 2, 5.0),
+            (3, 1, "train", 3, 7.0),
+            (4, 2, "prior", 1, None),
+            (5, 2, "test", 2, 10.0),
+        ],
+        schema=validate_dataset_orders_schema,
+    )
+
+
+@pytest.fixture
+def validate_dataset_users_df(spark, validate_dataset_users_schema):
+    return spark.createDataFrame(
+        [
+            (1,),
+            (2,),
+        ],
+        schema=validate_dataset_users_schema,
+    )
