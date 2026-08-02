@@ -6,7 +6,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from instacart_etl_rnn.common.io import read_csv, read_parquet
+from instacart_etl_rnn.common.io import read_csv, read_parquet, write_parquet
 
 
 def test_read_csv_with_schema(spark, tmp_path):
@@ -99,7 +99,7 @@ def test_write_parquet(spark, tmp_path):
 
     output_path = tmp_path / "parquet"
 
-    df.write.parquet(str(output_path))
+    write_parquet(output_path)
 
     loaded_df = read_parquet(
         path=output_path,

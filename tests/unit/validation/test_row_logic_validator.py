@@ -3,6 +3,7 @@ from pyspark.sql.types import IntegerType, StructField, StructType
 
 from instacart_etl_rnn.validation.exceptions import InvalidContractError
 from instacart_etl_rnn.validation.row_logic import (
+    _build_aggregate_expression,
     _group_aggregate_fields,
     validate_row_logic,
 )
@@ -322,6 +323,105 @@ def test_group_aggregate_fields_groups_same_partitions():
     assert [field["name"] for field in grouped[("product_id",)]] == [
         "product_order_count",
     ]
+
+
+@pytest.mark.parametrize(
+    ("field", "data", "expected"),
+    [
+        (
+            {
+                "aggregation": "min",
+                "column": "value",
+            },
+            [(3,), (1,), (2,), (None,)],
+            1,
+        ),
+        (
+            {
+                "aggregation": "max",
+                "column": "value",
+            },
+            [(3,), (1,), (2,), (None,)],
+            3,
+        ),
+        (
+            {
+                "aggregation": "sum",
+                "column": "value",
+            },
+            [(3,), (1,), (2,), (None,)],
+            6,
+        ),
+        (
+            {
+                "aggregation": "count",
+                "column": "value",
+            },
+            [(3,), (1,), (2,), (None,)],
+            3,
+        ),
+        (
+            {
+                "aggregation": "count_distinct",
+                "column": "value",
+            },
+            [(1,), (1,), (2,), (None,)],
+            2,
+        ),
+    ],
+)
+def test_build_aggregate_expression(
+    spark,
+    field,
+    data,
+    expected,
+):
+    df = spark.createDataFrame(data, ["value"])
+
+    result = df.agg(_build_aggregate_expression(field).alias("result")).first()[
+        "result"
+    ]
+
+    assert result == expected
+
+
+def test_build_aggregate_expression_conditional_count(
+    spark,
+):
+    df = spark.createDataFrame(
+        [
+            (1,),
+            (2,),
+            (3,),
+            (4,),
+            (None,),
+        ],
+        ["value"],
+    )
+
+    field = {
+        "aggregation": "conditional_count",
+        "condition": "value > 2",
+    }
+
+    result = df.agg(_build_aggregate_expression(field).alias("result")).first()[
+        "result"
+    ]
+
+    assert result == 2
+
+
+def test_build_aggregate_expression_unsupported_aggregation():
+    field = {
+        "aggregation": "average",
+        "column": "value",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="Unsupported aggregation: average",
+    ):
+        _build_aggregate_expression(field)
 
 
 @pytest.mark.parametrize(
