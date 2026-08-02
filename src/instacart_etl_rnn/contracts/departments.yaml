@@ -1,0 +1,39 @@
+dataset:
+  name: departments
+  description: >
+    One row per product department.
+  allow_extra_columns: false
+
+  grain:
+    - department_id
+
+schema:
+  - name: department_id
+    type: integer
+    nullable: false
+    description: Unique identifier for a department.
+    constraints:
+      unique: true
+      minimum: 1
+    thresholds:
+      nullability:
+        max_failed_percent: 0.0
+        severity: critical
+      uniqueness:
+        max_failed_percent: 0.0
+        severity: critical
+      range:
+        max_failed_percent: 0.0
+        severity: critical
+
+  - name: department
+    type: string
+    nullable: false
+    description: Human-readable department name.
+
+rules:
+  - name: department_name_is_not_blank
+    description: >
+      Department names must contain at least one non-whitespace character.
+    expression: >
+      LENGTH(TRIM(department)) > 0

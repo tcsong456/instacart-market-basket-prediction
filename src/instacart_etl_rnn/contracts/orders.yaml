@@ -1,20 +1,12 @@
 dataset:
   name: orders
-  allow_extra_columns: True
+  allow_extra_columns: false
   description: >
     One row per customer order, including order sequence,
     evaluation split, temporal information, and the interval
     since the customer's previous order.
-  owner: Congxi Song
-  format: csv
-  delimiter: ","
-  header: true
-  encoding: utf-8
 
   grain:
-    - order_id
-  
-  primary_key:
     - order_id
 
 schema:
@@ -114,38 +106,33 @@ schema:
   
 derived_fields:
   - name: train_or_test_count
-    type: integer
     description: >
       Number of train or test orders belonging to the user.
     aggregation: conditional_count
     condition: >
       eval_set IN ('train', 'test')
-    parrition_by:
+    partition_by:
       - user_id
   
   - name: user_min_order_number
-    type: integer
     aggregation: min
     column: order_number
     partition_by:
       - user_id
     
   - name: user_max_order_number
-    type: integer
     aggregation: max
     column: order_number
     partition_by:
       - user_id
   
   - name: user_distinct_order_number_count
-    type: integer
     aggregation: count_distinct
     column: order_number
-    parrition_by:
+    partition_by:
       - user_id
   
   - name: is_last_order
-    type: boolean
     expression: >
       order_number = user_max_order_number
 
@@ -155,7 +142,7 @@ rules:
       The first order for each user should not have a valid
       value for days_since_prior_order and it must be null
     expression: >
-      order_number <> 1 OR days_since_prior_order is NULL
+      order_number <> 1 OR days_since_prior_order IS NULL
   
   - name: later_orders_must_have_prior_interval
     description: >

@@ -1,0 +1,95 @@
+dataset:
+  name: order_products
+  description: >
+    One row per product contained inside an order
+  allow_extra_columns: false
+  
+  grain:
+    - order_id
+    - product_id
+  
+schema:
+  - name: order_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+    thresholds:
+      nullability:
+        max_failed_percent: 0.0
+        severity: critical
+      range:
+        max_failed_percent: 0.0
+        severity: critical
+  
+  - name: product_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+    thresholds:
+      nullability:
+        max_failed_percent: 0.0
+      range:
+        max_failed_percent: 5.0
+  
+  - name: add_to_cart_order
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+  
+  - name: reordered
+    type: integer
+    nullable: false
+    constraints:
+      allowed_values:
+        - 0
+        - 1
+
+relationships:
+  - name: order_products_order_FK
+    type: foreign_key
+    child_columns:
+      - order_id
+    parent:
+      dataset: orders
+      columns:
+        - order_id
+  
+  - name: order_products_product_FK
+    type: foreign_key
+    child_columns:
+      - product_id
+    parent:
+      dataset: products
+      columns:
+        - product_id
+
+derived_fields:
+  - name: order_min_cart_position
+    aggregation: min
+    column: add_to_cart_order
+    partition_by:
+      - order_id
+
+  - name: order_max_cart_position
+    aggregation: max
+    column: add_to_cart_order
+    partition_by:
+      - order_id
+  
+  - name: order_distinct_cart_count
+    aggregation: count_distinct
+    column: add_to_cart_order
+    partition_by:
+      - order_id
+
+rules:
+  - name: cart_positions_are_contiguous
+    description: >
+      Cart positions within each order must start at 1 and
+      have no gaps.
+    expression: >
+      order_min_cart_position = 1
+      AND order_max_cart_position = order_distinct_cart_count

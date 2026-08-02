@@ -1,0 +1,39 @@
+dataset:
+  name: aisles
+  description: >
+    One row per grocery aisle.
+  allow_extra_columns: false
+
+  grain:
+    - aisle_id
+
+schema:
+  - name: aisle_id
+    type: integer
+    nullable: false
+    description: Unique identifier for an aisle.
+    constraints:
+      unique: true
+      minimum: 1
+    thresholds:
+      nullability:
+        max_failed_percent: 0.0
+        severity: critical
+      uniqueness:
+        max_failed_percent: 0.0
+        severity: critical
+      range:
+        max_failed_percent: 0.0
+        severity: critical
+
+  - name: aisle
+    type: string
+    nullable: false
+    description: Human-readable aisle name.
+    
+rules:
+  - name: aisle_name_is_not_blank
+    description: >
+      Aisle names must contain at least one non-whitespace character.
+    expression: >
+      LENGTH(TRIM(aisle)) > 0
