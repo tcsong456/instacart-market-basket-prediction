@@ -1,0 +1,73 @@
+dataset:
+  name: products
+  description: >
+    One row per product, including its name, aisle,
+    and department classification.
+  allow_extra_columns: false
+
+  grain:
+    - product_id
+
+schema:
+  - name: product_id
+    type: integer
+    nullable: false
+    description: Unique identifier for a product.
+    constraints:
+      unique: true
+      minimum: 1
+    thresholds:
+      nullability:
+        max_failed_percent: 0.0
+        severity: critical
+      uniqueness:
+        max_failed_percent: 0.0
+        severity: critical
+      range:
+        max_failed_percent: 0.0
+        severity: critical
+
+  - name: product_name
+    type: string
+    nullable: false
+    description: Human-readable product name.
+
+  - name: aisle_id
+    type: integer
+    nullable: false
+    description: Identifier of the aisle containing the product.
+    constraints:
+      minimum: 1
+
+  - name: department_id
+    type: integer
+    nullable: false
+    description: Identifier of the product department.
+    constraints:
+      minimum: 1
+
+relationships:
+  - name: products_aisle_fk
+    type: foreign_key
+    child_columns:
+      - aisle_id
+    parent:
+      dataset: aisles
+      columns:
+        - aisle_id
+
+  - name: products_department_fk
+    type: foreign_key
+    child_columns:
+      - department_id
+    parent:
+      dataset: departments
+      columns:
+        - department_id
+
+rules:
+  - name: product_name_is_not_blank
+    description: >
+      Product names must contain at least one non-whitespace character
+    expression: >
+      LENGTH(TRIM(product_name)) > 0
