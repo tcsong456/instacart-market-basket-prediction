@@ -347,7 +347,7 @@ def test_validate_dataset_e2e_soft_threshold_returns_warning(
         [
             (1, 1, "prior", 1, None),
             (2, 1, "train", 2, 5.0),
-            (3, 2, "prior", 0, None),
+            (3, 2, "prior", 0, 15.0),
             (4, 2, "test", 2, 4.0),
         ],
         schema=validate_dataset_orders_schema,
@@ -363,7 +363,7 @@ def test_validate_dataset_e2e_soft_threshold_returns_warning(
 
     range_result = find_result(
         report,
-        rule_name="range",
+        rule_name="order_number.range",
     )
 
     assert range_result.failed_count == 1
