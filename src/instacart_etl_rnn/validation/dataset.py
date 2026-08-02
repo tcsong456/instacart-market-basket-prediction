@@ -186,6 +186,8 @@ def validate_dataset(
     column_presence_result = validate_column_presence(df, contract=contract)
     results.append(column_presence_result)
     if not column_presence_result.passed:
+        column_presence_result.status = ValidationStatus.FAILED
+        column_presence_result.severity = ValidationSeverity.CRITICAL
         logger.critical(column_presence_result.message)
         raise DataValidationError(
             ValidationReport(dataset_name=dataset_name, results=results)
@@ -194,6 +196,8 @@ def validate_dataset(
     column_datatype_result = validate_column_datatype(df, contract=contract)
     results.append(column_datatype_result)
     if not column_datatype_result.passed:
+        column_datatype_result.status = ValidationStatus.FAILED
+        column_datatype_result.severity = ValidationSeverity.CRITICAL
         logger.critical(column_datatype_result.message)
         raise DataValidationError(
             ValidationReport(dataset_name=dataset_name, results=results)
