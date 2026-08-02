@@ -99,7 +99,7 @@ def test_write_parquet(spark, tmp_path):
 
     output_path = tmp_path / "parquet"
 
-    write_parquet(output_path)
+    write_parquet(output_path, df)
 
     loaded_df = read_parquet(
         path=output_path,
