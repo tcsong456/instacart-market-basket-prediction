@@ -41,7 +41,7 @@ resource "google_project_iam_member" "user_dataproc_editor" {
   member  = "user:${var.admin_user}"
 }
 
-resource "google_service_account_iam_member" "user_dataproc_submit" {
+resource "google_service_account_iam_member" "admin_use_etl_runtime" {
   service_account_id = google_service_account.terraform_etl.name
   role               = "roles/iam.serviceAccountUser"
   member             = "user:${var.admin_user}"
