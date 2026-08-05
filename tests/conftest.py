@@ -230,13 +230,7 @@ def apply_thresholds_contract():
     }
 
 
-CONTRACT_PATH = (
-    Path(__file__).parent
-    / "integration"
-    / "validation"
-    / "contracts"
-    / "orders_test.yaml"
-)
+CONTRACT_PATH = Path(__file__).parent / "integration" / "contracts" / "orders_test.yaml"
 
 
 @pytest.fixture
