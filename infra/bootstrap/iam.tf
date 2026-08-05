@@ -77,7 +77,7 @@ resource "google_project_iam_custom_role" "terraform_storage_plan_reader" {
     "storage.buckets.getIamPolicy",
     "storage.objects.get",
     "storage.objects.list",
-    "storage.objects.update"
+    "storage.objects.update",
     "storage.objects.create",
     "storage.objects.delete"
   ]
