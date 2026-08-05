@@ -7,6 +7,7 @@ from instacart_etl_rnn.bronze.create_bronze_dataset import (
     build_dependent_bronze_datasets,
 )
 from instacart_etl_rnn.validation.exceptions import DataValidationError
+from instacart_etl_rnn.validation.models import ValidationReport
 
 
 def test_build_dependent_bronze_datasets_processes_all_datasets(
@@ -171,7 +172,8 @@ def test_build_dependent_bronze_datasets_stops_when_products_fail(
     aisles_df = mocker.sentinel.aisles_df
     departments_df = mocker.sentinel.departments_df
 
-    validation_error = DataValidationError(mocker.sentinel.report)
+    report = ValidationReport(dataset_name="products", results=[])
+    validation_error = DataValidationError(report)
 
     mocked_load_contract = mocker.patch(
         "instacart_etl_rnn.bronze.create_bronze_dataset.load_contract",

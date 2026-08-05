@@ -10,6 +10,7 @@ from instacart_etl_rnn.validation.exceptions import (
     DataValidationError,
     InvalidContractError,
 )
+from instacart_etl_rnn.validation.models import ValidationReport
 
 
 def test_build_independent_bronze_datasets_processes_all_datasets(mocker):
@@ -133,7 +134,8 @@ def test_build_independent_bronze_datasets_stops_on_validation_failure(
     mocker,
 ):
     spark = mocker.sentinel.spark
-    validation_error = DataValidationError(mocker.sentinel.report)
+    report = ValidationReport(dataset_name="orders", results=[])
+    validation_error = DataValidationError(report)
 
     mocked_load_contract = mocker.patch(
         "instacart_etl_rnn.bronze.create_bronze_dataset.load_contract",

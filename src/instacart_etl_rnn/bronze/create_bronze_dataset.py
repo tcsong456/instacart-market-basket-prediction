@@ -127,7 +127,7 @@ def convert_csv_to_parquet(
         output_path,
     )
 
-    write_parquet(output_path, df)
+    write_parquet(path=output_path, df=df)
 
     logger.info(
         "Bronze ingestion completed for dataset '%s'",

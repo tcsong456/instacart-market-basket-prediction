@@ -5,6 +5,7 @@ from pyspark.sql.types import StructType
 
 from instacart_etl_rnn.bronze.create_bronze_dataset import convert_csv_to_parquet
 from instacart_etl_rnn.validation.exceptions import DataValidationError
+from instacart_etl_rnn.validation.models import ValidationReport
 
 
 def test_convert_csv_to_parquet_reads_validates_and_writes(spark, mocker):
@@ -113,7 +114,8 @@ def test_convert_csv_to_parquet_does_not_write_when_validation_fails(spark, mock
         return_value=expected_df,
     )
 
-    validation_error = DataValidationError(mocker.sentinel.report)
+    report = ValidationReport(dataset_name="orders", results=[])
+    validation_error = DataValidationError(report)
     mocked_validate = mocker.patch(
         "instacart_etl_rnn.bronze.create_bronze_dataset.validate_dataset",
         side_effect=validation_error,

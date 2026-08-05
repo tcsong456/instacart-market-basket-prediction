@@ -74,7 +74,12 @@ resource "google_project_iam_custom_role" "terraform_storage_plan_reader" {
   permissions = [
     "storage.buckets.get",
     "storage.buckets.list",
-    "storage.buckets.getIamPolicy"
+    "storage.buckets.getIamPolicy",
+    "storage.objects.get",
+    "storage.objects.list",
+    "storage.objects.update"
+    "storage.objects.create",
+    "storage.objects.delete"
   ]
 }
 
