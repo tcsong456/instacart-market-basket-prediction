@@ -1,8 +1,7 @@
 import argparse
 import logging
-from pathlib import Path
 
-from instacart_etl_rnn.common.setup_logging import setup_logging
+from instacart_etl_rnn.common.setup_logging import configure_logging
 from instacart_etl_rnn.common.spark import create_spark_session
 from instacart_etl_rnn.jobs.create_bronze_dataset_job import run_bronze_job
 
@@ -25,7 +24,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--contract-path",
         required=True,
-        type=Path,
         help="Directory containing dataset contracts.",
     )
 
@@ -35,7 +33,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    setup_logging()
+    configure_logging()
     logger = logging.getLogger(__name__)
 
     spark = create_spark_session("build_bronze_datasets")

@@ -1,3 +1,5 @@
+from io import StringIO
+
 import pytest
 import yaml
 
@@ -354,3 +356,47 @@ def test_load_contract_raises_for_duplicate_column_names(tmp_path):
         match="Contract schema contains duplicate column names.",
     ):
         load_contract(contract_path)
+
+
+def test_load_contract_opens_remote_string_path_with_fsspec(
+    mocker,
+):
+    contract_path = "gs://test-bucket/contracts/orders.yaml"
+
+    yaml_content = """
+    dataset:
+      name: orders
+
+    schema:
+      - name: order_id
+        type: integer
+        nullable: false
+    """
+
+    handle = StringIO(yaml_content)
+    mocked_open = mocker.patch(
+        "instacart_etl_rnn.validation.loader.fsspec.open",
+    )
+    mocked_open.return_value.__enter__.return_value = handle
+    mocked_open.return_value.__exit__.return_value = None
+
+    result = load_contract(contract_path)
+
+    assert result == {
+        "dataset": {
+            "name": "orders",
+        },
+        "schema": [
+            {
+                "name": "order_id",
+                "type": "integer",
+                "nullable": False,
+            }
+        ],
+    }
+
+    mocked_open.assert_called_once_with(
+        contract_path,
+        mode="rt",
+        encoding="utf-8",
+    )

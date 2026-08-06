@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from pyspark.sql import SparkSession
 
 from instacart_etl_rnn.bronze.create_bronze_dataset import (
@@ -13,7 +11,7 @@ def run_bronze_job(
     *,
     csv_path: str,
     parquet_path: str,
-    contract_path: Path,
+    contract_path: str,
 ) -> None:
     """
     Build all bronze datasets from the raw CSV source.

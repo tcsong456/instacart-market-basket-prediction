@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import call
 
 import pytest
@@ -25,10 +24,13 @@ def test_build_independent_bronze_datasets_processes_all_datasets(mocker):
         side_effect=[
             "gs://raw-bucket/orders.csv",
             "gs://bronze-bucket/orders",
+            "contract/orders.yaml",
             "gs://raw-bucket/aisles.csv",
             "gs://bronze-bucket/aisles",
+            "contract/aisles.yaml",
             "gs://raw-bucket/departments.csv",
             "gs://bronze-bucket/departments",
+            "contract/departments.yaml",
         ],
     )
 
@@ -39,7 +41,7 @@ def test_build_independent_bronze_datasets_processes_all_datasets(mocker):
 
     input_path = "gs://raw-bucket"
     output_path = "gs://bronze-bucket"
-    contract_path = Path("contract")
+    contract_path = "contract"
 
     mocked_convert = mocker.patch(
         "instacart_etl_rnn.bronze.create_bronze_dataset.convert_csv_to_parquet"
@@ -57,16 +59,19 @@ def test_build_independent_bronze_datasets_processes_all_datasets(mocker):
     assert mocked_join_path.call_args_list == [
         call(input_path, "orders.csv"),
         call(output_path, "orders"),
+        call(contract_path, "orders.yaml"),
         call(input_path, "aisles.csv"),
         call(output_path, "aisles"),
+        call(contract_path, "aisles.yaml"),
         call(input_path, "departments.csv"),
         call(output_path, "departments"),
+        call(contract_path, "departments.yaml"),
     ]
 
     assert mocked_load_contract.call_args_list == [
-        call(contract_path / "orders.yaml"),
-        call(contract_path / "aisles.yaml"),
-        call(contract_path / "departments.yaml"),
+        call("contract/orders.yaml"),
+        call("contract/aisles.yaml"),
+        call("contract/departments.yaml"),
     ]
 
     assert mocked_convert.call_args_list == [
@@ -97,7 +102,11 @@ def test_build_independent_bronze_datasets_stops_on_load_contract_failure(mocker
 
     mocked_join_path = mocker.patch(
         "instacart_etl_rnn.bronze.create_bronze_dataset.join_path",
-        side_effect=["gs://bucket-raw/orders.csv", "gs://bronze/orders"],
+        side_effect=[
+            "gs://bucket-raw/orders.csv",
+            "gs://bronze/orders",
+            "contract/orders.yaml",
+        ],
     )
 
     mocked_load_contract = mocker.patch(
@@ -109,13 +118,12 @@ def test_build_independent_bronze_datasets_stops_on_load_contract_failure(mocker
         "instacart_etl_rnn.bronze.create_bronze_dataset.convert_csv_to_parquet"
     )
 
-    contract_path = Path("contract")
     with pytest.raises(InvalidContractError) as exc_info:
         build_independent_bronze_datasets(
             spark,
             input_path="gs://bucket-raw",
             output_path="gs://bronze",
-            contract_path=contract_path,
+            contract_path="contract",
         )
 
     assert exc_info.value is load_contract_error
@@ -123,9 +131,10 @@ def test_build_independent_bronze_datasets_stops_on_load_contract_failure(mocker
     assert mocked_join_path.call_args_list == [
         call("gs://bucket-raw", "orders.csv"),
         call("gs://bronze", "orders"),
+        call("contract", "orders.yaml"),
     ]
 
-    mocked_load_contract.assert_called_once_with(contract_path / "orders.yaml")
+    mocked_load_contract.assert_called_once_with("contract/orders.yaml")
 
     mocked_convert.assert_not_called()
 
@@ -144,10 +153,7 @@ def test_build_independent_bronze_datasets_stops_on_validation_failure(
 
     mocker.patch(
         "instacart_etl_rnn.bronze.create_bronze_dataset.join_path",
-        side_effect=[
-            "raw/orders.csv",
-            "bronze/orders",
-        ],
+        side_effect=["raw/orders.csv", "bronze/orders", "contract/orders.yaml"],
     )
 
     mocked_convert = mocker.patch(
@@ -160,12 +166,12 @@ def test_build_independent_bronze_datasets_stops_on_validation_failure(
             spark,
             input_path="raw",
             output_path="bronze",
-            contract_path=Path("contracts"),
+            contract_path="contract",
         )
 
     assert exc_info.value is validation_error
 
-    mocked_load_contract.assert_called_once_with(Path("contracts/orders.yaml"))
+    mocked_load_contract.assert_called_once_with("contract/orders.yaml")
 
     mocked_convert.assert_called_once()
 
