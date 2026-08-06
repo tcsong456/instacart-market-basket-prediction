@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import call
 
-from instacart_etl_rnn.bronze.create_bronze_dataset import run_bronze_job
+from instacart_etl_rnn.jobs.create_bronze_dataset_job import run_bronze_job
 
 
 def test_run_bronze_job_runs_bronze_builders(
