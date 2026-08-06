@@ -249,14 +249,14 @@ def test_load_contract_raises_for_non_string_type(tmp_path):
 
     contract_path.write_text(
         """
-    dataset:
-        name: orders
+        dataset:
+          name: orders
 
-    schema:
-        - name: order_id
-        type: 123
-        nullable: false
-    """
+        schema:
+          - name: order_id
+            type: 123
+            nullable: false
+        """
     )
 
     with pytest.raises(
