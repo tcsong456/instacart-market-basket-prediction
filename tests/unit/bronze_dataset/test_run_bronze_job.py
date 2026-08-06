@@ -10,11 +10,11 @@ def test_run_bronze_job_runs_bronze_builders(
     spark = mocker.sentinel.spark
 
     mocked_independent = mocker.patch(
-        "instacart_etl_rnn.bronze.job.build_independent_bronze_datasets"
+        "instacart_etl_rnn.bronze.create_bronze_dataset.build_independent_bronze_datasets"
     )
 
     mocked_dependent = mocker.patch(
-        "instacart_etl_rnn.bronze.job.build_dependent_bronze_datasets"
+        "instacart_etl_rnn.bronze.create_bronze_dataset.build_dependent_bronze_datasets"
     )
 
     manager = mocker.Mock()
