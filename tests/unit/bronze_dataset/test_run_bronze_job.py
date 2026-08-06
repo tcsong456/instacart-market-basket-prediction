@@ -83,7 +83,7 @@ def test_run_bronze_job_does_not_build_dependent_datasets_when_independent_fails
     mocked_independent.assert_called_once_with(
         spark,
         input_path="raw",
-        output="bronze",
+        output_path="bronze",
         contract_path=Path("contracts"),
     )
 
