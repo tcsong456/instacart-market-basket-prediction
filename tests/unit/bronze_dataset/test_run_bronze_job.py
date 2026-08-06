@@ -38,12 +38,12 @@ def test_run_bronze_job_runs_bronze_builders(
         call.independent(
             spark,
             input_path="raw",
-            parquet_path="bronze",
+            output_path="bronze",
             contract_path=Path("contracts"),
         ),
         call.dependent(
             spark,
-            input_path="raw",
+            csv_path="raw",
             parquet_path="bronze",
             contract_path=Path("contracts"),
         ),

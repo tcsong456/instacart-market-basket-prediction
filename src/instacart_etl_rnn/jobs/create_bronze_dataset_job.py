@@ -45,8 +45,8 @@ def run_bronze_job(
 
     build_independent_bronze_datasets(
         spark,
-        csv_path=csv_path,
-        parquet_path=parquet_path,
+        input_path=csv_path,
+        output_path=parquet_path,
         contract_path=contract_path,
     )
 
