@@ -37,13 +37,13 @@ def test_run_bronze_job_runs_bronze_builders(
     assert manager.mock_calls == [
         call.independent(
             spark,
-            csv_path="raw",
+            input_path="raw",
             parquet_path="bronze",
             contract_path=Path("contracts"),
         ),
         call.dependent(
             spark,
-            csv_path="raw",
+            input_path="raw",
             parquet_path="bronze",
             contract_path=Path("contracts"),
         ),
