@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
@@ -136,7 +135,7 @@ def convert_csv_to_parquet(
 
 
 def build_independent_bronze_datasets(
-    spark: SparkSession, *, input_path: str, output_path: str, contract_path: Path
+    spark: SparkSession, *, input_path: str, output_path: str, contract_path: str
 ) -> None:
     """
     Build independent bronze datasets from raw CSV files.
@@ -172,7 +171,7 @@ def build_independent_bronze_datasets(
     for dataset_name in dataset_names:
         data_csv_path = join_path(input_path, f"{dataset_name}.csv")
         data_parquet_path = join_path(output_path, dataset_name)
-        contract_dir = contract_path / f"{dataset_name}.yaml"
+        contract_dir = join_path(contract_path, f"{dataset_name}.yaml")
         contract = load_contract(contract_dir)
 
         convert_csv_to_parquet(
@@ -184,7 +183,7 @@ def build_independent_bronze_datasets(
 
 
 def build_dependent_bronze_datasets(
-    spark: SparkSession, *, parquet_path: str, csv_path: str, contract_path: Path
+    spark: SparkSession, *, parquet_path: str, csv_path: str, contract_path: str
 ) -> None:
     """
     Build bronze datasets that depend on reference datasets.
@@ -218,8 +217,10 @@ def build_dependent_bronze_datasets(
         If a dataset fails validation against its data contract.
     """
 
-    products_contract = load_contract(contract_path / "products.yaml")
-    order_products_contract = load_contract(contract_path / "order_products.yaml")
+    products_contract = load_contract(join_path(contract_path, "products.yaml"))
+    order_products_contract = load_contract(
+        join_path(contract_path, "order_products.yaml")
+    )
 
     aisles = read_parquet(join_path(parquet_path, "aisles"), spark)
 

@@ -1,13 +1,15 @@
-from pathlib import Path
+import os
 from typing import Any
 
+import fsspec
 import yaml
 from yaml import YAMLError
 
+from instacart_etl_rnn.common.paths import PathLike
 from instacart_etl_rnn.validation.exceptions import InvalidContractError
 
 
-def load_contract(contract_path: str | Path) -> dict[str, Any]:
+def load_contract(contract_path: PathLike) -> dict[str, Any]:
     """
     Load a YAML data contract.
 
@@ -21,13 +23,16 @@ def load_contract(contract_path: str | Path) -> dict[str, Any]:
         InvalidContractError: If the contract cannot be interpreted.
     """
 
-    path = Path(contract_path)
-    if not path.exists():
-        raise FileNotFoundError(f"contract not found on path: {path}")
-
+    contract_path = os.fspath(contract_path)
     try:
-        with path.open("r", encoding="utf-8") as f:
-            contract = yaml.safe_load(f)
+        with fsspec.open(
+            contract_path,
+            mode="rt",
+            encoding="utf-8",
+        ) as file:
+            contract = yaml.safe_load(file)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"contract not found on path: {contract_path}") from exc
     except YAMLError as exc:
         raise InvalidContractError(f"Invalid syntax in yaml contract: {exc}") from exc
 

@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import call
 
 import pytest
@@ -17,7 +16,7 @@ def test_build_dependent_bronze_datasets_processes_all_datasets(
 
     csv_path = "gs://raw-bucket"
     parquet_path = "gs://bronze-bucket"
-    contract_path = Path("contracts")
+    contract_path = "contracts"
 
     products_contract = {
         "dataset": {
@@ -46,6 +45,8 @@ def test_build_dependent_bronze_datasets_processes_all_datasets(
     mocked_join_path = mocker.patch(
         "instacart_etl_rnn.bronze.create_bronze_dataset.join_path",
         side_effect=[
+            "contracts/products.yaml",
+            "contracts/order_products.yaml",
             "gs://bronze-bucket/aisles",
             "gs://bronze-bucket/departments",
             "gs://raw-bucket/products.csv",
@@ -83,11 +84,13 @@ def test_build_dependent_bronze_datasets_processes_all_datasets(
     assert result is None
 
     assert mocked_load_contract.call_args_list == [
-        call(contract_path / "products.yaml"),
-        call(contract_path / "order_products.yaml"),
+        call("contracts/products.yaml"),
+        call("contracts/order_products.yaml"),
     ]
 
     assert mocked_join_path.call_args_list == [
+        call(contract_path, "products.yaml"),
+        call(contract_path, "order_products.yaml"),
         call(parquet_path, "aisles"),
         call(parquet_path, "departments"),
         call(csv_path, "products.csv"),
@@ -186,6 +189,8 @@ def test_build_dependent_bronze_datasets_stops_when_products_fail(
     mocker.patch(
         "instacart_etl_rnn.bronze.create_bronze_dataset.join_path",
         side_effect=[
+            "contracts/products.yaml",
+            "contracts/order_products.yaml",
             "bronze/aisles",
             "bronze/departments",
             "raw/products.csv",
@@ -211,7 +216,7 @@ def test_build_dependent_bronze_datasets_stops_when_products_fail(
             spark,
             parquet_path="bronze",
             csv_path="raw",
-            contract_path=Path("contracts"),
+            contract_path="contracts",
         )
 
     assert exc_info.value is validation_error
