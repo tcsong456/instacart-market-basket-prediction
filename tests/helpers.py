@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from instacart_etl_rnn.validation.models import ValidationReport
 
 
@@ -11,3 +13,14 @@ def find_result(report: ValidationReport, *, rule_name: str):
     assert len(matches) == 1, f"Expected one matching rule, found {len(matches)}"
 
     return matches[0]
+
+
+def write_csv(
+    path: Path,
+    *,
+    content: str,
+) -> None:
+    path.write_text(
+        content,
+        encoding="utf-8",
+    )
