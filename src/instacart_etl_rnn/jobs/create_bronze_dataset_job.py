@@ -15,10 +15,38 @@ def run_bronze_job(
     parquet_path: str,
     contract_path: Path,
 ) -> None:
+    """
+    Build all bronze datasets from the raw CSV source.
+
+    The function orchestrates the bronze ingestion workflow by first
+    building datasets that have no foreign-key dependencies, followed
+    by datasets that depend on previously generated bronze datasets.
+
+    Parameters
+    ----------
+    spark
+        Active Spark session used throughout the bronze ingestion job.
+    csv_path
+        Base path containing the raw CSV datasets.
+    parquet_path
+        Base path where the bronze Parquet datasets are written.
+    contract_path
+        Directory containing the data contract YAML files.
+
+    Raises
+    ------
+    FileNotFoundError
+        If a required contract or input dataset cannot be found.
+    InvalidContractError
+        If a data contract is invalid.
+    DataValidationError
+        If a dataset fails validation against its contract.
+    """
+
     build_independent_bronze_datasets(
         spark,
-        csv_path=csv_path,
-        parquet_path=parquet_path,
+        input_path=csv_path,
+        output_path=parquet_path,
         contract_path=contract_path,
     )
 
