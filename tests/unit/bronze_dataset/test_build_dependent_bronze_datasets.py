@@ -132,6 +132,7 @@ def test_build_dependent_bronze_datasets_processes_all_datasets(
                 "aisles": aisles_df,
                 "departments": departments_df,
             },
+            normalize_product_names=True,
         ),
         call(
             spark,
@@ -234,4 +235,5 @@ def test_build_dependent_bronze_datasets_stops_when_products_fail(
             "aisles": aisles_df,
             "departments": departments_df,
         },
+        normalize_product_names=True,
     )
