@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
 from pyspark.sql.types import (
     BooleanType,
     DoubleType,
@@ -115,6 +116,18 @@ def convert_csv_to_parquet(
     logger.info("Reading raw csv dataset %s from %s", dataset_name, input_path)
 
     df = read_csv(path=input_path, spark=spark, schema=schema)
+
+    if "product_name" in df.columns:
+        # read_csv intentionally preserves doubled quotes in source product names.
+        # Normalize them once at the bronze boundary.
+        df = df.withColumn(
+            "product_name",
+            F.replace(
+                F.col("product_name"),
+                F.lit('""'),
+                F.lit('"'),
+            ),
+        )
 
     logger.info("validating dataset %s against its contract", dataset_name)
 

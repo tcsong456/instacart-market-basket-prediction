@@ -2,6 +2,7 @@ import pytest
 from pyspark.errors import AnalysisException
 
 from instacart_etl_rnn.bronze.create_bronze_dataset import convert_csv_to_parquet
+from instacart_etl_rnn.common.io import read_parquet
 from instacart_etl_rnn.validation.exceptions import DataValidationError
 from tests.helpers import find_result, write_csv
 
@@ -127,3 +128,53 @@ def test_convert_csv_to_parquet_rejects_missing_input_file(
         )
 
     assert not output_path.exists()
+
+
+def test_convert_csv_to_parquet_normalizes_product_name(
+    spark,
+    tmp_path,
+):
+    input_path = tmp_path / "products.csv"
+    output_path = tmp_path / "products_parquet"
+
+    input_path.write_text(
+        "product_id,product_name,aisle_id,department_id\n"
+        '6816,"Scotch Kids 5\\"" Scissors, Blunted, Red",87,17\n',
+        encoding="utf-8",
+    )
+
+    contract = {
+        "dataset": {
+            "name": "products",
+        },
+        "schema": [
+            {
+                "name": "product_id",
+                "type": "integer",
+                "nullable": False,
+            },
+            {
+                "name": "product_name",
+                "type": "string",
+                "nullable": False,
+            },
+            {
+                "name": "aisle_id",
+                "type": "integer",
+                "nullable": False,
+            },
+            {
+                "name": "department_id",
+                "type": "integer",
+                "nullable": False,
+            },
+        ],
+    }
+
+    convert_csv_to_parquet(
+        spark, input_path=input_path, output_path=output_path, contract=contract
+    )
+
+    result = read_parquet(str(output_path), spark)
+
+    assert result.first().product_name == ('Scotch Kids 5" Scissors, Blunted, Red')

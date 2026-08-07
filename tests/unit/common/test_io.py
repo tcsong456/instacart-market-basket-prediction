@@ -44,6 +44,41 @@ def test_read_csv_with_schema(spark, tmp_path):
     ]
 
 
+def test_read_csv_handles_escaped_quotes_and_commas(
+    spark,
+    tmp_path,
+):
+    csv_path = tmp_path / "products.csv"
+
+    csv_path.write_text(
+        "product_id,product_name,aisle_id,department_id\n"
+        '6816,"Scotch Kids 5\\"" Scissors, Blunted, Red",87,17\n',
+        encoding="utf-8",
+    )
+
+    schema = StructType(
+        [
+            StructField("product_id", IntegerType(), True),
+            StructField("product_name", StringType(), True),
+            StructField("aisle_id", IntegerType(), True),
+            StructField("department_id", IntegerType(), True),
+        ]
+    )
+
+    df = read_csv(
+        csv_path,
+        spark,
+        schema=schema,
+    )
+
+    row = df.first()
+
+    assert row.product_id == 6816
+    assert row.aisle_id == 87
+    assert row.department_id == 17
+    assert row.product_name == 'Scotch Kids 5"" Scissors, Blunted, Red'
+
+
 def test_read_csv_infers_schema(spark, tmp_path):
     csv_path = tmp_path / "test.csv"
 
