@@ -172,7 +172,11 @@ def test_convert_csv_to_parquet_normalizes_product_name(
     }
 
     convert_csv_to_parquet(
-        spark, input_path=input_path, output_path=output_path, contract=contract
+        spark,
+        input_path=input_path,
+        output_path=output_path,
+        contract=contract,
+        normalize_product_names=True,
     )
 
     result = read_parquet(str(output_path), spark)

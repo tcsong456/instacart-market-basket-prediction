@@ -76,6 +76,7 @@ def convert_csv_to_parquet(
     output_path: PathLike,
     contract: dict[str, Any],
     reference_datasets: dict[str, DataFrame] | None = None,
+    normalize_product_names: bool = False,
 ) -> None:
     """
     Read, validate, and convert a CSV dataset to Parquet.
@@ -117,7 +118,7 @@ def convert_csv_to_parquet(
 
     df = read_csv(path=input_path, spark=spark, schema=schema)
 
-    if "product_name" in df.columns:
+    if normalize_product_names:
         # read_csv intentionally preserves doubled quotes in source product names.
         # Normalize them once at the bronze boundary.
         df = df.withColumn(
@@ -245,6 +246,7 @@ def build_dependent_bronze_datasets(
         output_path=join_path(parquet_path, "products"),
         contract=products_contract,
         reference_datasets={"aisles": aisles, "departments": departments},
+        normalize_product_names=True,
     )
 
     orders = read_parquet(join_path(parquet_path, "orders"), spark)
