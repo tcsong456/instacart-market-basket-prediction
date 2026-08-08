@@ -9,6 +9,9 @@ __pycache__/
 #Data
 data/
 
+#Ignore zip files
+*.zip
+
 # Terraform working directory
 .terraform/
 
