@@ -42,7 +42,7 @@ def test_run_user_data_job(mocker):
         call.read(spark=spark, input_path="silver", contract_path="contracts"),
         call.build_order(order_products),
         call.build_user(order_group_data),
-        call.write("silver", user_data),
+        call.write("silver/user_data", user_data),
     ]
 
 
