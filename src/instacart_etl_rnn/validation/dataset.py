@@ -18,7 +18,7 @@ from instacart_etl_rnn.validation.models import (
     ValidationStatus,
 )
 from instacart_etl_rnn.validation.nullability import nullability_validator
-from instacart_etl_rnn.validation.range import validate_range
+from instacart_etl_rnn.validation.range import range_validator
 from instacart_etl_rnn.validation.referential_integrity import validate_foreign_keys
 from instacart_etl_rnn.validation.row_logic import validate_row_logic
 from instacart_etl_rnn.validation.schema import (
@@ -223,7 +223,7 @@ def validate_dataset(
 
     results.extend(
         _apply_thresholds(
-            results=validate_range(df, contract=contract),
+            results=range_validator(df, contract=contract),
             total_rows=total_rows,
             validation_type="range",
             contract=contract,
