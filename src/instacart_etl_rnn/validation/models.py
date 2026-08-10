@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from pyspark.sql import DataFrame
+from pyspark.sql import Column, DataFrame
 
 
 class ValidationStatus(str, Enum):
@@ -29,6 +29,15 @@ class ValidationResult:
     metadata: dict[str, Any] = field(default_factory=dict)
     status: str | None = ValidationStatus.PASSED
     severity: str | None = ValidationSeverity.INFO
+
+
+@dataclass(frozen=True)
+class ValidationMetric:
+    alias: str
+    rule_name: str
+    validation_type: str
+    columns: tuple[str, ...]
+    expression: Column
 
 
 @dataclass
