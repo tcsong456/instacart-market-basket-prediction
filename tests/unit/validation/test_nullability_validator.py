@@ -1,174 +1,216 @@
 import pytest
-from pyspark.sql.types import (
-    IntegerType,
-    StructField,
-    StructType,
-)
 
-from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
-from instacart_etl_rnn.validation.null import validate_nullability
+from instacart_etl_rnn.validation.nullability import nullability_validator
 
 
-def test_nullability_validator_passes_non_nullable_columns(spark):
-    schema = StructType(
-        [
-            StructField("order_id", IntegerType(), False),
-            StructField("user_id", IntegerType(), False),
-        ]
-    )
-    df = spark.createDataFrame([(1, 10), (2, 20)], schema=schema)
-
-    contract = {
-        "schema": [
-            {"name": "order_id", "type": "integer", "nullable": False},
-            {"name": "user_id", "type": "integer", "nullable": False},
-        ]
-    }
-
-    results = validate_nullability(df, contract=contract)
-
-    assert len(results) == 2
-    assert all(result.passed for result in results)
-    assert all(result.failed_count == 0 for result in results)
-    assert all(result.invalid_rows is None for result in results)
-    assert results[0].rule_name == "order_id.nullability"
-    assert results[1].rule_name == "user_id.nullability"
-    assert all(result.category == "nullability" for result in results)
-    assert results[0].message == "Column 'order_id' contains no null values"
-    assert results[1].message == "Column 'user_id' contains no null values"
-    assert results[0].metadata == {"column_name": "order_id", "nullable": False}
-    assert results[1].metadata == {"column_name": "user_id", "nullable": False}
-
-
-def test_nullability_validator_detects_nulls(spark):
-    schema = StructType(
-        [
-            StructField("order_id", IntegerType(), True),
-            StructField("user_id", IntegerType(), True),
-        ]
-    )
-    df = spark.createDataFrame([(1, 10), (None, 20), (None, None)], schema=schema)
-
+def test_build_nullability_metrics_builds_expected_metrics():
     contract = {
         "schema": [
             {
                 "name": "order_id",
-                "type": "integer",
                 "nullable": False,
             },
             {
                 "name": "user_id",
-                "type": "integer",
                 "nullable": False,
             },
-        ]
-    }
-
-    results = validate_nullability(df, contract=contract)
-    results_by_column = {result.metadata["column_name"]: result for result in results}
-
-    assert results_by_column["order_id"].passed is False
-    assert results_by_column["order_id"].failed_count == 2
-    assert results_by_column["order_id"].invalid_rows is not None
-    assert results_by_column["order_id"].invalid_rows.count() == 2
-    assert (
-        results_by_column["order_id"].message
-        == "Column 'order_id' is not nullable but contains 2 null value(s)"
-    )
-
-    assert results_by_column["user_id"].passed is False
-    assert results_by_column["user_id"].failed_count == 1
-    assert results_by_column["user_id"].invalid_rows is not None
-    assert results_by_column["user_id"].invalid_rows.count() == 1
-    assert (
-        results_by_column["user_id"].message
-        == "Column 'user_id' is not nullable but contains 1 null value(s)"
-    )
-
-
-def test_nullability_validator_allows_nulls_for_nullable_column(spark):
-    schema = StructType(
-        [
-            StructField(
-                "days_since_prior_order",
-                IntegerType(),
-                True,
-            ),
-        ]
-    )
-    df = spark.createDataFrame(
-        [
-            (None,),
-            (7,),
-            (None,),
-        ],
-        schema=schema,
-    )
-
-    contract = {
-        "schema": [
             {
                 "name": "days_since_prior_order",
-                "type": "integer",
                 "nullable": True,
             },
         ]
     }
 
-    results = validate_nullability(df, contract=contract)[0]
+    metrics = nullability_validator(contract)
 
-    assert results.passed is True
-    assert results.failed_count == 0
-    assert results.invalid_rows is None
-    assert results.message == "Column: 'days_since_prior_order' allows null values"
+    assert len(metrics) == 2
+
+    assert [metric.alias for metric in metrics] == [
+        "order_id_nullability",
+        "user_id_nullability",
+    ]
+
+    assert [metric.rule_name for metric in metrics] == [
+        "order_id.nullability",
+        "user_id.nullability",
+    ]
+
+    assert [metric.validation_type for metric in metrics] == [
+        "nullability",
+        "nullability",
+    ]
+
+    assert [metric.columns for metric in metrics] == [
+        ("order_id",),
+        ("user_id",),
+    ]
 
 
-def test_nullability_validator_rejects_invalid_nullable_value(spark):
+@pytest.mark.parametrize(
+    "nullable",
+    [
+        "false",
+        0,
+        1,
+        [],
+        {},
+        None,
+    ],
+)
+def test_build_nullability_metrics_rejects_non_boolean_nullable(
+    nullable,
+):
+    contract = {
+        "schema": [
+            {
+                "name": "order_id",
+                "nullable": nullable,
+            },
+        ]
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="must be a boolean",
+    ):
+        nullability_validator(contract)
+
+
+def test_nullability_metrics_count_nulls_correctly(spark):
     df = spark.createDataFrame(
-        [(1,)],
-        ["order_id"],
+        [
+            (1, 10, "prior"),
+            (2, None, "train"),
+            (None, 20, None),
+            (4, None, "test"),
+        ],
+        schema=("order_id INT, user_id INT, eval_set STRING"),
     )
 
     contract = {
         "schema": [
             {
                 "name": "order_id",
-                "type": "integer",
-                "nullable": "false",
+                "nullable": False,
+            },
+            {
+                "name": "user_id",
+                "nullable": False,
+            },
+            {
+                "name": "eval_set",
+                "nullable": False,
             },
         ]
     }
 
-    with pytest.raises(
-        InvalidConstraintError,
-        match="must have a boolean",
-    ):
-        validate_nullability(
-            df,
-            contract=contract,
-        )
+    metrics = nullability_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["order_id_nullability"] == 1
+    assert row["user_id_nullability"] == 2
+    assert row["eval_set_nullability"] == 1
 
 
-def test_nullability_validator_invalid_rows_limit(spark):
-    schema = StructType(
+def test_nullability_metrics_return_zero_when_no_nulls(spark):
+    df = spark.createDataFrame(
         [
-            StructField(
-                "days_since_prior_order",
-                IntegerType(),
-                True,
-            ),
-        ]
+            (1, 10),
+            (2, 20),
+            (3, 30),
+        ],
+        "order_id INT, user_id INT",
     )
-    df = spark.createDataFrame([(None,) for _ in range(30)], schema=schema)
 
     contract = {
         "schema": [
-            {"name": "days_since_prior_order", "type": "integer", "nullable": False}
+            {
+                "name": "order_id",
+                "nullable": False,
+            },
+            {
+                "name": "user_id",
+                "nullable": False,
+            },
         ]
     }
 
-    results = validate_nullability(df, contract=contract)[0]
+    metrics = nullability_validator(contract)
 
-    assert results.invalid_rows is not None
-    assert results.invalid_rows.count() == 20
-    assert results.failed_count == 30
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["order_id_nullability"] == 0
+    assert row["user_id_nullability"] == 0
+
+
+def test_multiple_nullability_metrics_can_be_aggregated_together(
+    spark,
+):
+    df = spark.createDataFrame(
+        [
+            (1, None, None),
+            (None, 2, None),
+        ],
+        "a INT, b INT, c INT",
+    )
+
+    contract = {
+        "schema": [
+            {"name": "a", "nullable": False},
+            {"name": "b", "nullable": False},
+            {"name": "c", "nullable": False},
+        ]
+    }
+
+    metrics = nullability_validator(contract)
+
+    assert len(metrics) == 3
+
+    result = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert result["a_nullability"] == 1
+    assert result["b_nullability"] == 1
+    assert result["c_nullability"] == 2
+
+
+def test_build_nullability_metrics_skips_nullable_column_without_threshold():
+    contract = {
+        "schema": [
+            {
+                "name": "comment",
+                "nullable": True,
+            }
+        ]
+    }
+
+    metrics = nullability_validator(contract)
+
+    assert metrics == []
+
+
+def test_build_nullability_metrics_includes_nullable_column_with_threshold():
+    contract = {
+        "schema": [
+            {
+                "name": "comment",
+                "nullable": True,
+                "thresholds": {
+                    "nullability": {
+                        "max_failed_percent": 10.0,
+                    }
+                },
+            }
+        ]
+    }
+
+    metrics = nullability_validator(contract)
+
+    assert len(metrics) == 1
+
+    metric = metrics[0]
+
+    assert metric.alias == "comment_nullability"
+    assert metric.rule_name == "comment.nullability"
+    assert metric.validation_type == "nullability"
+    assert metric.columns == ("comment",)

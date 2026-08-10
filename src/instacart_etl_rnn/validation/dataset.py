@@ -17,7 +17,7 @@ from instacart_etl_rnn.validation.models import (
     ValidationSeverity,
     ValidationStatus,
 )
-from instacart_etl_rnn.validation.null import validate_nullability
+from instacart_etl_rnn.validation.nullability import validate_nullability
 from instacart_etl_rnn.validation.range import validate_range
 from instacart_etl_rnn.validation.referential_integrity import validate_foreign_keys
 from instacart_etl_rnn.validation.row_logic import validate_row_logic
