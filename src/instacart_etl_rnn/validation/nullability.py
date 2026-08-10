@@ -3,6 +3,7 @@ from typing import Any
 from pyspark.sql import Column
 from pyspark.sql import functions as F
 
+from instacart_etl_rnn.validation.exceptions import InvalidContractError
 from instacart_etl_rnn.validation.models import ValidationMetric
 
 
@@ -17,7 +18,9 @@ def nullability_validator(
         nullable = column_schema.get("nullable", True)
 
         if not isinstance(nullable, bool):
-            raise ValueError(f"'nullable' for column {column_name!r} must be a boolean")
+            raise InvalidContractError(
+                f"'nullable' for column {column_name!r} must be a boolean"
+            )
 
         null_threshold = column_schema.get("thresholds", {}).get("nullability")
 
