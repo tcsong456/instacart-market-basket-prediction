@@ -311,7 +311,7 @@ def test_string_length_metric_supports_equal_minimum_and_maximum(
 def test_string_length_validator_accepts_zero_as_minimum(spark):
     df = spark.createDataFrame(
         [
-            ("",),  # length 0 -> valid
+            ("",),
             ("a",),
             ("abc",),
         ],
