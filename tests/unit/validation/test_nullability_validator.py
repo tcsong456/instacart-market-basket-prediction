@@ -1,5 +1,6 @@
 import pytest
 
+from instacart_etl_rnn.validation.exceptions import InvalidContractError
 from instacart_etl_rnn.validation.nullability import nullability_validator
 
 
@@ -70,7 +71,7 @@ def test_build_nullability_metrics_rejects_non_boolean_nullable(
     }
 
     with pytest.raises(
-        ValueError,
+        InvalidContractError,
         match="must be a boolean",
     ):
         nullability_validator(contract)

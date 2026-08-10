@@ -1,129 +1,85 @@
 from typing import Any
 
-from pyspark.sql import Column, DataFrame
+from pyspark.sql import Column
 from pyspark.sql import functions as F
 
 from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
-from instacart_etl_rnn.validation.models import ValidationResult
+from instacart_etl_rnn.validation.models import ValidationMetric
 from instacart_etl_rnn.validation.utils import is_number
 
 
-def _build_invalid_condition(
+def _build_range_invalid_condition(
     column_name: str,
+    *,
     minimum: int | float | None,
     maximum: int | float | None,
 ) -> Column:
-    invalid_condition = F.lit(False)
+    condition = F.lit(False)
 
     if minimum is not None:
-        invalid_condition = invalid_condition | (F.col(column_name) < minimum)
+        condition |= F.col(column_name) < F.lit(minimum)
 
     if maximum is not None:
-        invalid_condition = invalid_condition | (F.col(column_name) > maximum)
+        condition |= F.col(column_name) > F.lit(maximum)
 
-    return invalid_condition & F.col(column_name).isNotNull()
-
-
-def _build_range_message(
-    column_name: str, min_value: int | float | None, max_value: int | float | None
-) -> str:
-    if min_value is not None and max_value is not None:
-        return f"column '{column_name}' must be between {min_value} and {max_value}"
-
-    if min_value is not None:
-        return f"column '{column_name}' must be at least '{min_value}'"
-
-    if max_value is not None:
-        return f"column '{column_name}' must be at most '{max_value}'"
+    return F.col(column_name).isNotNull() & condition
 
 
-def validate_range(
-    df: DataFrame, *, contract: dict[str, Any]
-) -> list[ValidationResult]:
-    schemas = contract.get("schema")
+def range_validator(
+    contract: dict[str, Any],
+) -> list[ValidationMetric]:
+    metrics: list[ValidationMetric] = []
 
-    range_columns, range_values = [], []
-    for schema in schemas:
-        name = schema["name"]
-        constraints = schema.get("constraints")
+    for column_schema in contract.get("schema", []):
+        column_name = column_schema["name"]
+        constraints = column_schema.get("constraints", {})
 
-        if constraints is not None:
-            minimum = constraints.get("minimum")
-            maximum = constraints.get("maximum")
+        minimum = constraints.get("minimum")
+        maximum = constraints.get("maximum")
 
-            if minimum is not None or maximum is not None:
-                if minimum is not None and not is_number(minimum):
-                    raise InvalidConstraintError(
-                        f"Minimum for column '{name}' must be a valid number"
-                    )
+        if minimum is None and maximum is None:
+            continue
 
-                if maximum is not None and not is_number(maximum):
-                    raise InvalidConstraintError(
-                        f"Maximum for column '{name}' must be a valid number"
-                    )
-
-                if minimum is not None and maximum is not None and minimum > maximum:
-                    raise InvalidConstraintError(
-                        f"Minimum for column '{name}' cannot be greater than maximum: "
-                        f"{minimum} > {maximum}"
-                    )
-
-                if minimum is not None and maximum is not None:
-                    values = (minimum, maximum)
-                elif minimum is not None:
-                    values = (minimum, None)
-                else:
-                    values = (None, maximum)
-
-                range_columns.append(name)
-                range_values.append(values)
-
-    if range_columns:
-        failed_count = df.agg(
-            *[
-                F.sum(
-                    F.when(
-                        _build_invalid_condition(column, minimum, maximum), 1
-                    ).otherwise(0)
-                ).alias(column)
-                for column, (minimum, maximum) in zip(range_columns, range_values)
-            ]
-        ).first()
-
-        failed_dict = {
-            column: int(failed_count[column] or 0) for column in range_columns
-        }
-    else:
-        failed_dict = {}
-
-    results = []
-    if not failed_dict:
-        results = []
-    else:
-        for (key, value), (minimum, maximum) in zip(failed_dict.items(), range_values):
-            invalid_conditions = _build_invalid_condition(key, minimum, maximum)
-            invalid_rows = (
-                df.filter(invalid_conditions).select(key).limit(30)
-                if value > 0
-                else None
+        if minimum is not None and not is_number(minimum):
+            raise InvalidConstraintError(
+                f"minimum for column {column_name!r} must be a valid number"
             )
 
-            message = _build_range_message(key, minimum, maximum)
-
-            results.append(
-                ValidationResult(
-                    rule_name=f"{key}.range",
-                    category="range",
-                    passed=value == 0,
-                    failed_count=value,
-                    invalid_rows=invalid_rows,
-                    message=message,
-                    metadata={
-                        "column_name": key,
-                        "minimum": minimum,
-                        "maximum": maximum,
-                    },
-                )
+        if maximum is not None and not is_number(maximum):
+            raise InvalidConstraintError(
+                f"maximum for column {column_name!r} must be a valid number"
             )
 
-    return results
+        if minimum is not None and maximum is not None and minimum > maximum:
+            raise InvalidConstraintError(
+                f"minimum cannot be greater than maximum "
+                f"for column {column_name!r}: "
+                f"{minimum} > {maximum}"
+            )
+
+        alias = f"{column_name}_range"
+
+        invalid_condition = _build_range_invalid_condition(
+            column_name,
+            minimum=minimum,
+            maximum=maximum,
+        )
+
+        expression = F.sum(
+            F.when(
+                invalid_condition,
+                1,
+            ).otherwise(0)
+        ).alias(alias)
+
+        metrics.append(
+            ValidationMetric(
+                alias=alias,
+                rule_name=f"{column_name}.range",
+                validation_type="range",
+                columns=(column_name,),
+                expression=expression,
+            )
+        )
+
+    return metrics

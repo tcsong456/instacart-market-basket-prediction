@@ -1,252 +1,328 @@
 import pytest
-from pyspark.sql.types import IntegerType, StructField, StructType
 
 from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
-from instacart_etl_rnn.validation.range import validate_range
+from instacart_etl_rnn.validation.range import (
+    _build_range_invalid_condition,
+    range_validator,
+)
 
 
-def test_range_validator_all_values_in_range(spark):
-    df = spark.createDataFrame([(1, 0.5), (5, 1.5), (10, 2.5)], ["sales", "price"])
-
+def test_build_range_metrics_builds_expected_metrics():
     contract = {
         "schema": [
-            {"name": "sales", "constraints": {"minimum": 1, "maximum": 10}},
-            {"name": "price", "constraints": {"minimum": 0.5, "maximum": 2.5}},
+            {
+                "name": "order_id",
+                "constraints": {
+                    "minimum": 1,
+                },
+            },
+            {
+                "name": "order_dow",
+                "constraints": {
+                    "minimum": 0,
+                    "maximum": 6,
+                },
+            },
+            {
+                "name": "eval_set",
+                "constraints": {},
+            },
         ]
     }
 
-    results = validate_range(df, contract=contract)
+    metrics = range_validator(contract)
 
-    assert results[0].rule_name == "sales.range"
-    assert results[0].category == "range"
-    assert results[0].passed is True
-    assert results[0].failed_count == 0
-    assert results[0].invalid_rows is None
-    assert results[0].message == "column 'sales' must be between 1 and 10"
-    assert results[0].metadata == {
-        "column_name": "sales",
-        "minimum": 1,
-        "maximum": 10,
-    }
+    assert len(metrics) == 2
 
-    assert results[1].rule_name == "price.range"
-    assert results[1].category == "range"
-    assert results[1].passed is True
-    assert results[1].failed_count == 0
-    assert results[1].invalid_rows is None
-    assert results[1].message == "column 'price' must be between 0.5 and 2.5"
-    assert results[1].metadata == {
-        "column_name": "price",
-        "minimum": 0.5,
-        "maximum": 2.5,
-    }
+    assert [metric.alias for metric in metrics] == [
+        "order_id_range",
+        "order_dow_range",
+    ]
+
+    assert [metric.rule_name for metric in metrics] == [
+        "order_id.range",
+        "order_dow.range",
+    ]
+
+    assert [metric.validation_type for metric in metrics] == [
+        "range",
+        "range",
+    ]
+
+    assert [metric.columns for metric in metrics] == [
+        ("order_id",),
+        ("order_dow",),
+    ]
 
 
-def test_range_validator_values_outside_range(spark):
-    df = spark.createDataFrame([(1, 0.5), (5, 1.5), (10, 2.5)], ["sales", "price"])
-
-    contract = {
-        "schema": [
-            {"name": "sales", "constraints": {"minimum": 2, "maximum": 10}},
-            {"name": "price", "constraints": {"minimum": 1.0, "maximum": 2.0}},
-        ]
-    }
-
-    results = validate_range(df, contract=contract)
-
-    assert results[0].passed is False
-    assert results[0].failed_count == 1
-    invalid_rows = {row["sales"] for row in results[0].invalid_rows.collect()}
-    assert invalid_rows == {1}
-
-    assert results[1].passed is False
-    assert results[1].failed_count == 2
-    invalid_rows = {row["price"] for row in results[1].invalid_rows.collect()}
-    assert invalid_rows == {0.5, 2.5}
-
-
-def test_range_validator_ignores_null_values(spark):
-    df = spark.createDataFrame(
-        [(None, 0.5), (5, None), (10, 1.0), (None, 2.5)],
-        ["sales", "price"],
-    )
-
-    contract = {
-        "schema": [
-            {"name": "sales", "constraints": {"minimum": 1, "maximum": 10}},
-            {"name": "price", "constraints": {"minimum": 1.0, "maximum": 3.0}},
-        ]
-    }
-
-    results = validate_range(df, contract=contract)
-
-    assert results[0].passed is True
-    assert results[0].failed_count == 0
-
-    assert results[1].passed is False
-    assert results[1].failed_count == 1
-
-
-def test_range_validator_with_minimum_only(spark):
+def test_range_metric_counts_values_below_minimum(spark):
     df = spark.createDataFrame(
         [
             (0,),
             (1,),
-            (100,),
-        ],
-        ["sales"],
-    )
-
-    contract = {"schema": [{"name": "sales", "constraints": {"minimum": 1}}]}
-
-    result = validate_range(df, contract=contract)[0]
-
-    assert result.passed is False
-    assert result.failed_count == 1
-    assert result.metadata["minimum"] == 1
-    assert result.metadata["maximum"] is None
-
-    invalid_values = [row["sales"] for row in result.invalid_rows.collect()]
-
-    assert invalid_values == [0]
-
-
-def test_range_validator_with_maximum_only(spark):
-    df = spark.createDataFrame(
-        [
-            (-100,),
+            (2,),
             (10,),
-            (11,),
+            (None,),
         ],
-        ["sales"],
-    )
-
-    contract = {"schema": [{"name": "sales", "constraints": {"maximum": 10}}]}
-
-    result = validate_range(df, contract=contract)[0]
-
-    assert result.passed is False
-    assert result.failed_count == 1
-    assert result.metadata["minimum"] is None
-    assert result.metadata["maximum"] == 10
-
-    invalid_values = [row["sales"] for row in result.invalid_rows.collect()]
-
-    assert invalid_values == [11]
-
-
-def test_range_validator_with_no_boundary(spark):
-    df = spark.createDataFrame(
-        [
-            (1,),
-            (5,),
-            (10,),
-        ],
-        ["sales"],
-    )
-
-    contract = {"schema": [{"name": "sales"}]}
-
-    result = validate_range(df, contract=contract)
-
-    assert result == []
-
-
-def test_range_validator_raises_when_minimum_exceeds_maximum(spark):
-    df = spark.createDataFrame(
-        [(1,)],
-        ["sales"],
-    )
-
-    contract = {
-        "schema": [{"name": "sales", "constraints": {"minimum": 10, "maximum": 1}}]
-    }
-
-    with pytest.raises(
-        InvalidConstraintError,
-        match="Minimum for column 'sales'",
-    ):
-        validate_range(df, contract=contract)
-
-
-def test_range_validator_raises_when_minimum_is_invalid(spark):
-    df = spark.createDataFrame(
-        [(1,)],
-        ["sales"],
+        "order_id INT",
     )
 
     contract = {
         "schema": [
-            {"name": "sales", "constraints": {"minimum": "false", "maximum": 10}}
+            {
+                "name": "order_id",
+                "constraints": {
+                    "minimum": 1,
+                },
+            }
+        ]
+    }
+
+    metrics = range_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["order_id_range"] == 1
+
+
+def test_range_metric_counts_values_above_maximum(spark):
+    df = spark.createDataFrame(
+        [
+            (0,),
+            (6,),
+            (7,),
+            (10,),
+            (None,),
+        ],
+        "order_dow INT",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "order_dow",
+                "constraints": {
+                    "maximum": 6,
+                },
+            }
+        ]
+    }
+
+    metrics = range_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["order_dow_range"] == 2
+
+
+def test_range_metric_ignores_null_values(spark):
+    df = spark.createDataFrame(
+        [
+            (None,),
+            (None,),
+            (None,),
+        ],
+        "order_dow INT",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "order_dow",
+                "constraints": {
+                    "minimum": 0,
+                    "maximum": 6,
+                },
+            }
+        ]
+    }
+
+    metrics = range_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["order_dow_range"] == 0
+
+
+def test_multiple_range_metrics_can_be_aggregated_together(spark):
+    df = spark.createDataFrame(
+        [
+            (0, -1, 25),
+            (1, 0, 23),
+            (2, 6, 12),
+            (3, 7, 24),
+        ],
+        "order_id INT, order_dow INT, order_hour INT",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "order_id",
+                "constraints": {
+                    "minimum": 1,
+                },
+            },
+            {
+                "name": "order_dow",
+                "constraints": {
+                    "minimum": 0,
+                    "maximum": 6,
+                },
+            },
+            {
+                "name": "order_hour",
+                "constraints": {
+                    "minimum": 0,
+                    "maximum": 23,
+                },
+            },
+        ]
+    }
+
+    metrics = range_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["order_id_range"] == 1
+    assert row["order_dow_range"] == 2
+    assert row["order_hour_range"] == 2
+
+
+@pytest.mark.parametrize(
+    "constraint_name,value",
+    [
+        ("minimum", "1"),
+        ("minimum", True),
+        ("minimum", []),
+        ("maximum", "10"),
+        ("maximum", False),
+        ("maximum", {}),
+    ],
+)
+def test_build_range_metrics_rejects_non_numeric_constraints(
+    constraint_name,
+    value,
+):
+    contract = {
+        "schema": [
+            {
+                "name": "order_id",
+                "constraints": {
+                    constraint_name: value,
+                },
+            }
         ]
     }
 
     with pytest.raises(
         InvalidConstraintError,
-        match="Minimum for column 'sales' must be a valid number",
+        match="must be a valid number",
     ):
-        validate_range(df, contract=contract)
+        range_validator(contract)
 
 
-def test_range_validator_raises_when_maximum_is_invalid(spark):
-    df = spark.createDataFrame(
-        [(1,)],
-        ["sales"],
-    )
-
+def test_build_range_metrics_rejects_minimum_greater_than_maximum():
     contract = {
-        "schema": [{"name": "sales", "constraints": {"minimum": 1, "maximum": "true"}}]
+        "schema": [
+            {
+                "name": "order_dow",
+                "constraints": {
+                    "minimum": 10,
+                    "maximum": 5,
+                },
+            }
+        ]
     }
 
     with pytest.raises(
         InvalidConstraintError,
-        match="Maximum for column 'sales' must be a valid number",
+        match="minimum cannot be greater than maximum",
     ):
-        validate_range(df, contract=contract)
+        range_validator(contract)
 
 
-def test_range_validator_limits_invalid_row_sample_to_30(spark):
-    df = spark.createDataFrame([(value,) for value in range(50)], ["sales"])
-
-    contract = {"schema": [{"name": "sales", "constraints": {"minimum": 50}}]}
-
-    result = validate_range(df, contract=contract)[0]
-
-    assert result.passed is False
-    assert result.failed_count == 50
-    assert result.invalid_rows is not None
-    assert result.invalid_rows.count() == 30
-
-
-def test_range_validator_when_dataframe_is_empty(spark):
-    schema = StructType([StructField("sales", IntegerType(), False)])
-    df = spark.createDataFrame([], schema=schema)
-
-    contract = {
-        "schema": [{"name": "sales", "constraints": {"minimum": 1, "maximum": 10}}]
-    }
-
-    result = validate_range(df, contract=contract)[0]
-
-    assert result.passed is True
-    assert result.failed_count == 0
-    assert result.invalid_rows is None
-
-
-def test_range_validator_with_all_values_null(spark):
-    schema = StructType([StructField("sales", IntegerType(), True)])
+def test_range_metric_allows_equal_minimum_and_maximum(spark):
     df = spark.createDataFrame(
         [
-            (None,),
-            (None,),
-            (None,),
+            (4,),
+            (5,),
+            (6,),
         ],
-        schema=schema,
+        "value INT",
     )
 
-    contract = {"schema": [{"name": "sales", "constraints": {"minimum": 1}}]}
+    contract = {
+        "schema": [
+            {
+                "name": "value",
+                "constraints": {
+                    "minimum": 5,
+                    "maximum": 5,
+                },
+            }
+        ]
+    }
 
-    result = validate_range(df, contract=contract)[0]
+    metrics = range_validator(contract)
 
-    assert result.passed is True
-    assert result.failed_count == 0
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["value_range"] == 2
+
+
+def test_range_metric_returns_zero_for_values_within_inclusive_range(
+    spark,
+):
+    df = spark.createDataFrame(
+        [
+            (0,),
+            (1,),
+            (3,),
+            (5,),
+            (6,),
+        ],
+        "order_dow INT",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "order_dow",
+                "constraints": {
+                    "minimum": 0,
+                    "maximum": 6,
+                },
+            }
+        ]
+    }
+
+    metrics = range_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["order_dow_range"] == 0
+
+
+def test_range_invalid_condition_identifies_exact_invalid_rows(spark):
+    df = spark.createDataFrame(
+        [
+            (1, -1),
+            (2, 0),
+            (3, 3),
+            (4, 6),
+            (5, 7),
+            (6, None),
+        ],
+        "id INT, order_dow INT",
+    )
+
+    condition = _build_range_invalid_condition(
+        "order_dow",
+        minimum=0,
+        maximum=6,
+    )
+
+    actual = {row.id for row in df.filter(condition).collect()}
+
+    assert actual == {1, 5}
