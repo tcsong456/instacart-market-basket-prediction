@@ -6,7 +6,10 @@ from pyspark.sql.types import (
 )
 
 from instacart_etl_rnn.validation.exceptions import InvalidContractError
-from instacart_etl_rnn.validation.referential_integrity import validate_foreign_keys
+from instacart_etl_rnn.validation.referential_integrity import (
+    _validate_referential_integrity,
+    validate_foreign_keys,
+)
 
 
 def test_validate_foreign_keys_passes_when_all_parent_keys_exist(
@@ -348,6 +351,14 @@ def test_validate_foreign_keys_ignores_other_relationship_types(spark):
             "Foreign-key relationship must contain a non-empty",
         ),
         (
+            {"type": "foreign_key", "child_columns": {"a", "b"}},
+            "Foreign-key relationship must contain a non-empty",
+        ),
+        (
+            {"type": "foreign_key", "child_columns": ["a", 1, True]},
+            "Foreign-key relationship must contain a non-empty",
+        ),
+        (
             {
                 "type": "foreign_key",
                 "child_columns": ["order_id"],
@@ -368,6 +379,22 @@ def test_validate_foreign_keys_ignores_other_relationship_types(spark):
                 "type": "foreign_key",
                 "child_columns": ["order_id"],
                 "parent": {"dataset": "orders", "columns": []},
+            },
+            "Foreign-key parent must contain a non-empty",
+        ),
+        (
+            {
+                "type": "foreign_key",
+                "child_columns": ["order_id"],
+                "parent": {"dataset": "orders", "columns": {"a", "b"}},
+            },
+            "Foreign-key parent must contain a non-empty",
+        ),
+        (
+            {
+                "type": "foreign_key",
+                "child_columns": ["order_id"],
+                "parent": {"dataset": "orders", "columns": ["a", 2, False]},
             },
             "Foreign-key parent must contain a non-empty",
         ),
@@ -499,3 +526,160 @@ def test_validate_foreign_keys_empty_dataframes(
 
     assert result.passed is passed
     assert result.failed_count == failed_count
+
+
+def test_referential_integrity_ignores_partial_null_composite_keys(
+    spark,
+):
+    parent_df = spark.createDataFrame(
+        [
+            (10, 100),
+            (20, 200),
+        ],
+        "parent_a INT, parent_b INT",
+    )
+
+    child_df = spark.createDataFrame(
+        [
+            (1, 10, 100),
+            (2, 20, 200),
+            (3, 10, None),
+            (4, None, 100),
+            (5, None, None),
+            (6, 99, 999),
+        ],
+        "id INT, child_a INT, child_b INT",
+    )
+
+    result = _validate_referential_integrity(
+        child_df=child_df,
+        parent_df=parent_df,
+        child_columns=["child_a", "child_b"],
+        parent_columns=["parent_a", "parent_b"],
+    )
+
+    assert result.passed is False
+    assert result.failed_count == 1
+
+    invalid_keys = {tuple(row) for row in result.invalid_rows.collect()}
+
+    assert invalid_keys == {
+        (99, 999),
+    }
+
+
+def test_validate_foreign_keys_uses_default_rule_name_when_name_is_missing(
+    spark,
+):
+    parent_df = spark.createDataFrame(
+        [
+            (1,),
+            (2,),
+        ],
+        "id INT",
+    )
+
+    child_df = spark.createDataFrame(
+        [
+            (1,),
+            (2,),
+        ],
+        "user_id INT",
+    )
+
+    contract = {
+        "relationships": [
+            {
+                "type": "foreign_key",
+                "child_columns": ["user_id"],
+                "parent": {
+                    "dataset": "users",
+                    "columns": ["id"],
+                },
+            }
+        ]
+    }
+
+    results = validate_foreign_keys(
+        child_df=child_df,
+        contract=contract,
+        datasets={
+            "users": parent_df,
+        },
+    )
+
+    assert len(results) == 1
+    assert results[0].rule_name == "user_id_fk"
+
+
+def test_referential_integrity_ignores_null_parent_keys(
+    spark,
+):
+    parent_df = spark.createDataFrame(
+        [
+            (1,),
+            (2,),
+            (None,),
+        ],
+        "parent_id INT",
+    )
+
+    child_df = spark.createDataFrame(
+        [
+            (1,),  # valid
+            (2,),  # valid
+            (3,),  # invalid
+            (None,),  # ignored child NULL
+        ],
+        "child_id INT",
+    )
+
+    result = _validate_referential_integrity(
+        child_df=child_df,
+        parent_df=parent_df,
+        child_columns=["child_id"],
+        parent_columns=["parent_id"],
+    )
+
+    assert result.passed is False
+    assert result.failed_count == 1
+
+    invalid_keys = {row["child_id"] for row in result.invalid_rows.collect()}
+
+    assert invalid_keys == {3}
+
+
+def test_referential_integrity_does_not_match_partial_null_parent_keys(
+    spark,
+):
+    parent_df = spark.createDataFrame(
+        [
+            (10, 100),
+            (20, None),
+        ],
+        "parent_a INT, parent_b INT",
+    )
+
+    child_df = spark.createDataFrame(
+        [
+            (10, 100),  # valid
+            (20, 200),  # invalid
+        ],
+        "child_a INT, child_b INT",
+    )
+
+    result = _validate_referential_integrity(
+        child_df=child_df,
+        parent_df=parent_df,
+        child_columns=["child_a", "child_b"],
+        parent_columns=["parent_a", "parent_b"],
+    )
+
+    assert not result.passed
+    assert result.failed_count == 1
+
+    invalid_keys = {tuple(row) for row in result.invalid_rows.collect()}
+
+    assert invalid_keys == {
+        (20, 200),
+    }

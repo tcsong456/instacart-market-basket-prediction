@@ -59,7 +59,13 @@ def extract_foreign_keys(
         child_columns = relationship.get("child_columns")
         parent = relationship.get("parent")
 
-        if not isinstance(child_columns, list) or not child_columns:
+        if (
+            not isinstance(child_columns, list)
+            or not child_columns
+            or not all(
+                isinstance(column, str) and column.strip() for column in child_columns
+            )
+        ):
             raise InvalidContractError(
                 "Foreign-key relationship must contain a non-empty 'child_columns' list"
             )
@@ -77,7 +83,13 @@ def extract_foreign_keys(
                 "Foreign-key parent must contain a valid dataset name"
             )
 
-        if not isinstance(parent_columns, list) or not parent_columns:
+        if (
+            not isinstance(parent_columns, list)
+            or not parent_columns
+            or not all(
+                isinstance(column, str) and column.strip() for column in parent_columns
+            )
+        ):
             raise InvalidContractError(
                 "Foreign-key parent must contain a non-empty 'columns' list"
             )
@@ -108,6 +120,7 @@ def _validate_referential_integrity(
     parent_df: DataFrame,
     child_columns: list[str],
     parent_columns: list[str],
+    rule_name: str = "",
 ) -> ValidationResult:
     _validate_referential_integrity_arguments(
         child_df=child_df,
@@ -142,7 +155,7 @@ def _validate_referential_integrity(
     parent_key = ", ".join(parent_columns)
 
     return ValidationResult(
-        rule_name=(", ".join(child_columns) + ".referential_integrity"),
+        rule_name=rule_name,
         category="referential_integrity",
         passed=passed,
         message=(
@@ -180,9 +193,9 @@ def validate_foreign_keys(
             parent_df=datasets[parent_dataset],
             child_columns=foreign_key["child_columns"],
             parent_columns=foreign_key["parent_columns"],
+            rule_name=foreign_key["name"],
         )
 
-        result.rule_name = foreign_key["name"]
         results.append(result)
 
     return results
