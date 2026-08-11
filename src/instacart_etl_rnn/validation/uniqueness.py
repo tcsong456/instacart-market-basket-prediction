@@ -1,69 +1,91 @@
 from collections import Counter
 from functools import reduce
+from operator import and_
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
+from instacart_etl_rnn.validation.exceptions import InvalidContractError
 from instacart_etl_rnn.validation.models import ValidationResult
 
 
-def validate_uniqueness(df: DataFrame, *, columns: list[str]) -> ValidationResult:
-    if not columns:
-        raise ValueError("column names cannot be empty")
+def validate_uniqueness(
+    df: DataFrame,
+    *,
+    columns: list[str],
+) -> ValidationResult:
+    if (
+        not isinstance(columns, list)
+        or not columns
+        or not all(isinstance(column, str) and column.strip() for column in columns)
+    ):
+        raise InvalidContractError("columns must be a non-empty list of column names")
 
-    duplicate_keys = [key for key, value in Counter(columns).items() if value > 1]
-    if duplicate_keys:
-        raise ValueError(
-            "input column keys must be unique but got duplicate keys: "
-            f"{', '.join(duplicate_keys)}"
+    duplicate_columns = [
+        column for column, count in Counter(columns).items() if count > 1
+    ]
+
+    if duplicate_columns:
+        raise InvalidContractError(
+            "columns cannot contain duplicate column names: "
+            f"{', '.join(duplicate_columns)}"
         )
 
     non_null_condition = reduce(
-        lambda x, y: x & y, [F.col(column).isNotNull() for column in columns]
+        and_,
+        (F.col(column).isNotNull() for column in columns),
     )
-    duplicated_values = (
-        df.filter(non_null_condition)
-        .groupby(columns)
+
+    non_null_df = df.filter(non_null_condition)
+
+    duplicate_keys = (
+        non_null_df.groupBy(*columns)
         .count()
         .filter(F.col("count") > 1)
+        .select(*columns)
     )
-    duplicate_values_count = duplicated_values.count()
 
-    if duplicate_values_count == 0:
+    duplicate_rows = non_null_df.join(
+        duplicate_keys,
+        on=columns,
+        how="inner",
+    )
+
+    duplicate_row_count = duplicate_rows.count()
+    duplicate_key_count = duplicate_keys.count()
+
+    rule_name = f"{', '.join(columns)}.uniqueness"
+    column_names = ", ".join(columns)
+
+    if duplicate_row_count == 0:
         return ValidationResult(
-            rule_name=f"{', '.join(columns)}.uniqueness",
+            rule_name=rule_name,
             category="uniqueness",
             passed=True,
-            message=(f"Columns '{', '.join(columns)}' have no duplicate values"),
+            message=(f"Columns '{column_names}' have no duplicate values"),
             failed_count=0,
             invalid_rows=None,
             metadata={
                 "columns": columns,
-                "duplicate_values_count": 0,
-                "duplicate_rows_count": 0,
+                "duplicate_row_count": 0,
+                "duplicate_key_count": 0,
             },
         )
-    else:
-        df = df.filter(non_null_condition)
-        duplicate_rows = df.join(
-            duplicated_values.select(*columns), on=columns, how="inner"
-        )
-        duplicate_rows_count = duplicate_rows.count()
-        invalid_rows = duplicate_rows.limit(30)
 
-        return ValidationResult(
-            rule_name=f"{', '.join(columns)}.uniqueness",
-            category="uniqueness",
-            passed=False,
-            message=(
-                f"Columns '{', '.join(columns)}' "
-                f"found {duplicate_values_count} duplicate key value(s)"
-            ),
-            failed_count=duplicate_rows_count,
-            invalid_rows=invalid_rows,
-            metadata={
-                "columns": columns,
-                "duplicate_values_count": duplicate_values_count,
-                "duplicate_rows_count": duplicate_rows_count,
-            },
-        )
+    return ValidationResult(
+        rule_name=rule_name,
+        category="uniqueness",
+        passed=False,
+        message=(
+            f"Columns '{column_names}' have "
+            f"{duplicate_row_count} row(s) participating "
+            "in duplicate key values"
+        ),
+        failed_count=duplicate_row_count,
+        invalid_rows=duplicate_rows.limit(30),
+        metadata={
+            "columns": columns,
+            "duplicate_row_count": duplicate_row_count,
+            "duplicate_key_count": duplicate_key_count,
+        },
+    )
