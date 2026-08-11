@@ -91,7 +91,7 @@ def validate_column_presence(
             "unexpected_columns": unexpected_columns,
             "missing_columns": missing_columns,
             "actual_columns": sorted(df.columns),
-            "duplicate_columns": duplicate_expected,
+            "duplicate_columns": duplicate_actual,
         },
     )
 

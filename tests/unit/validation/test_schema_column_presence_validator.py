@@ -204,9 +204,7 @@ def test_column_presence_detects_duplicate_dataframe_columns(spark):
 
     assert result.passed is False
     assert result.failed_count == 1
-    assert result.metadata["duplicate_columns"] == [
-        "value",
-    ]
+    assert result.metadata["duplicate_columns"] == ["value"]
 
 
 def test_column_presence_reports_missing_and_unexpected_columns(spark):
