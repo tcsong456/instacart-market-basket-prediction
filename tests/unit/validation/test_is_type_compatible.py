@@ -138,3 +138,10 @@ def test_is_type_compatible_rejects_unsupported_contract_type():
             StringType(),
             "whatever",
         )
+
+
+def test_is_type_not_compatible_with_none_actual_type():
+    _is_type_compatible(
+        None,
+        "array<integer>",
+    )
