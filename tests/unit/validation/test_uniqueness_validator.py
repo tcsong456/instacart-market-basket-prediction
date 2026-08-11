@@ -1,211 +1,231 @@
 import pytest
-from pyspark.sql.types import LongType, StructField, StructType
 
+from instacart_etl_rnn.validation.exceptions import InvalidContractError
 from instacart_etl_rnn.validation.uniqueness import validate_uniqueness
 
 
-def test_validate_uniqueness_passes_when_values_are_unique(spark):
+def test_uniqueness_passes_when_values_are_unique(spark):
     df = spark.createDataFrame(
         [
-            (1, "prior"),
-            (2, "prior"),
-            (3, "train"),
+            (1, "a"),
+            (2, "b"),
+            (3, "c"),
         ],
-        ["order_id", "eval_set"],
+        "id INT, value STRING",
     )
 
     result = validate_uniqueness(
         df,
-        columns=["order_id"],
+        columns=["id"],
     )
 
-    assert result.passed is True
+    assert result.passed
     assert result.failed_count == 0
     assert result.invalid_rows is None
-    assert result.metadata["columns"] == ["order_id"]
-    assert result.metadata["duplicate_values_count"] == 0
-    assert result.metadata["duplicate_rows_count"] == 0
-    assert result.message == "Columns 'order_id' have no duplicate values"
-    assert result.rule_name == "order_id.uniqueness"
-    assert result.category == "uniqueness"
+    assert result.rule_name == "id.uniqueness"
+    assert result.metadata["duplicate_row_count"] == 0
+    assert result.metadata["duplicate_key_count"] == 0
 
 
-def test_validate_uniqueness_detects_duplicate_values(spark):
+def test_uniqueness_counts_all_rows_participating_in_duplicates(
+    spark,
+):
     df = spark.createDataFrame(
         [
-            (1, "prior"),
-            (2, "prior"),
-            (2, "train"),
-            (3, "prior"),
-            (3, "train"),
-            (3, "test"),
+            (1, "a"),
+            (1, "b"),
+            (1, "c"),
+            (2, "d"),
+            (2, "e"),
+            (3, "f"),
         ],
-        ["order_id", "eval_set"],
+        "id INT, value STRING",
     )
 
     result = validate_uniqueness(
         df,
-        columns=["order_id"],
+        columns=["id"],
     )
 
     assert result.passed is False
     assert result.failed_count == 5
-    assert result.metadata["duplicate_values_count"] == 2
-    assert result.metadata["duplicate_rows_count"] == 5
-    assert result.message == "Columns 'order_id' found 2 duplicate key value(s)"
+    assert result.metadata["duplicate_row_count"] == 5
+    assert result.metadata["duplicate_key_count"] == 2
 
 
-def test_validate_uniqueness_returns_duplicate_row_samples(spark):
-    df = spark.createDataFrame(
-        [(1, "a"), (2, "b"), (2, "c"), (3, "d"), (3, "e"), (3, "f")],
-        ["order_id", "eval_set"],
-    )
-
-    result = validate_uniqueness(df, columns=["order_id"])
-
-    invalid_rows = result.invalid_rows.collect()
-    invalid_keys = {row["order_id"] for row in invalid_rows}
-
-    assert invalid_keys == {2, 3}
-    assert result.failed_count == 5
-
-
-def test_validate_uniqueness_invalid_rows_limit(spark):
-    df = spark.createDataFrame([(1,) for _ in range(50)], ["order_id"])
-
-    result = validate_uniqueness(df, columns=["order_id"])
-
-    assert result.invalid_rows is not None
-    assert result.invalid_rows.count() == 30
-    assert result.failed_count == 50
-
-
-def test_validate_uniqueness_supports_unique_composite_key(spark):
+def test_uniqueness_returns_exact_duplicate_rows(spark):
     df = spark.createDataFrame(
         [
-            (1, 1),
-            (1, 2),
-            (2, 1),
-            (2, 2),
+            (1, "a"),
+            (1, "b"),
+            (2, "c"),
+            (3, "d"),
+            (3, "e"),
         ],
-        ["user_id", "order_number"],
+        "id INT, value STRING",
     )
 
     result = validate_uniqueness(
         df,
-        columns=["user_id", "order_number"],
+        columns=["id"],
     )
 
-    assert result.passed is True
-    assert result.failed_count == 0
-    assert result.invalid_rows is None
-    assert result.rule_name == "user_id, order_number.uniqueness"
-    assert result.message == "Columns 'user_id, order_number' have no duplicate values"
+    actual = {(row["id"], row["value"]) for row in result.invalid_rows.collect()}
 
-
-def test_validate_uniqueness_detects_duplicate_composite_keys(spark):
-    df = spark.createDataFrame(
-        [
-            (1, 1, "a"),
-            (1, 1, "b"),
-            (1, 2, "c"),
-            (2, 1, "d"),
-        ],
-        ["user_id", "order_number", "value"],
-    )
-
-    result = validate_uniqueness(
-        df,
-        columns=["user_id", "order_number"],
-    )
-
-    assert result.passed is False
-    assert result.failed_count == 2
-    assert result.metadata["duplicate_values_count"] == 1
-    assert result.metadata["duplicate_rows_count"] == 2
-    assert (
-        result.message
-        == "Columns 'user_id, order_number' found 1 duplicate key value(s)"
-    )
-
-    invalid_keys = {
-        (row["user_id"], row["order_number"]) for row in result.invalid_rows.collect()
+    assert actual == {
+        (1, "a"),
+        (1, "b"),
+        (3, "d"),
+        (3, "e"),
     }
-    assert invalid_keys == {(1, 1)}
 
 
-def test_validate_uniqueness_passes_empty_dataframe(spark):
-    schema = StructType(
+def test_uniqueness_supports_composite_keys(spark):
+    df = spark.createDataFrame(
         [
-            StructField(
-                "order_id",
-                LongType(),
-                nullable=True,
-            )
-        ]
+            (1, 10, "a"),
+            (1, 10, "b"),
+            (1, 20, "c"),
+            (2, 10, "d"),
+            (2, 10, "e"),
+            (3, 30, "f"),
+        ],
+        "user_id INT, order_id INT, value STRING",
     )
-
-    df = spark.createDataFrame([], schema)
 
     result = validate_uniqueness(
         df,
-        columns=["order_id"],
+        columns=["user_id", "order_id"],
     )
 
-    assert result.passed is True
-    assert result.failed_count == 0
-    assert result.metadata["duplicate_values_count"] == 0
-    assert result.metadata["duplicate_rows_count"] == 0
+    assert result.passed is False
+    assert result.failed_count == 4
+    assert result.rule_name == ("user_id, order_id.uniqueness")
 
 
-def test_validate_uniqueness_rejects_empty_column_names(spark):
-    df = spark.createDataFrame(
-        [(1,)],
-        ["order_id"],
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="column names cannot be empty",
-    ):
-        validate_uniqueness(
-            df,
-            columns=[],
-        )
-
-
-def test_validate_uniqueness_rejects_duplicate_column_names(spark):
-    df = spark.createDataFrame(
-        [(1, 10)],
-        ["order_id", "user_id"],
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="input column keys must be unique",
-    ):
-        validate_uniqueness(
-            df,
-            columns=["order_id", "order_id", "user_id"],
-        )
-
-
-def test_validate_uniqueness_ignores_nulls(spark):
+def test_uniqueness_ignores_null_single_column_keys(spark):
     df = spark.createDataFrame(
         [
             (1,),
+            (2,),
+            (None,),
             (None,),
             (None,),
         ],
-        ["order_id"],
+        "id INT",
     )
 
     result = validate_uniqueness(
         df,
-        columns=["order_id"],
+        columns=["id"],
     )
 
-    assert result.passed is True
+    assert result.passed
     assert result.failed_count == 0
-    assert result.metadata["duplicate_values_count"] == 0
-    assert result.metadata["duplicate_rows_count"] == 0
+
+
+def test_uniqueness_ignores_partial_null_composite_keys(spark):
+    df = spark.createDataFrame(
+        [
+            (1, 10),
+            (2, 20),
+            (1, None),
+            (1, None),
+            (None, 10),
+            (None, 10),
+            (None, None),
+            (None, None),
+        ],
+        "user_id INT, order_id INT",
+    )
+
+    result = validate_uniqueness(
+        df,
+        columns=["user_id", "order_id"],
+    )
+
+    assert result.passed
+    assert result.failed_count == 0
+
+
+def test_uniqueness_ignores_null_keys_but_detects_non_null_duplicates(
+    spark,
+):
+    df = spark.createDataFrame(
+        [
+            (1, 10),
+            (1, 10),
+            (2, None),
+            (2, None),
+            (None, 20),
+            (None, 20),
+        ],
+        "user_id INT, order_id INT",
+    )
+
+    result = validate_uniqueness(
+        df,
+        columns=["user_id", "order_id"],
+    )
+
+    assert not result.passed
+    assert result.failed_count == 2
+    assert result.metadata["duplicate_key_count"] == 1
+
+
+def test_uniqueness_rejects_duplicate_column_names(spark):
+    df = spark.createDataFrame(
+        [(1,)],
+        "id INT",
+    )
+
+    with pytest.raises(
+        InvalidContractError,
+        match="duplicate column names",
+    ):
+        validate_uniqueness(
+            df,
+            columns=["id", "id"],
+        )
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [["id", ""], ["id", "   "], ["id", 123], ["id", None], [], {}, {"id"}],
+)
+def test_uniqueness_rejects_invalid_column_names(
+    spark,
+    columns,
+):
+    df = spark.createDataFrame(
+        [(1,)],
+        "id INT",
+    )
+
+    with pytest.raises(
+        InvalidContractError,
+        match="non-empty list of column names",
+    ):
+        validate_uniqueness(
+            df,
+            columns=columns,
+        )
+
+
+def test_uniqueness_counts_every_row_in_duplicate_group(spark):
+    df = spark.createDataFrame(
+        [
+            (5,),
+            (5,),
+            (5,),
+            (5,),
+        ],
+        "id INT",
+    )
+
+    result = validate_uniqueness(
+        df,
+        columns=["id"],
+    )
+
+    assert result.failed_count == 4
