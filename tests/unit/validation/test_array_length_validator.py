@@ -1,369 +1,398 @@
 import pytest
-from pyspark.sql import Row
-from pyspark.sql.types import (
-    ArrayType,
-    IntegerType,
-    StringType,
-    StructField,
-    StructType,
-)
 
-from instacart_etl_rnn.validation.array_length import validate_array_lengths
+from instacart_etl_rnn.validation.array_length import (
+    _build_invalid_condition,
+    array_length_validator,
+)
 from instacart_etl_rnn.validation.exceptions import InvalidConstraintError
 
 
-def test_validate_array_length_all_pass(spark):
-    df = spark.createDataFrame(
-        [(["3_0", "2_3_4"], [1, 3, -100]), ([""], [2, 4])],
-        ["order_history", "product_history"],
-    )
-
+def test_array_length_validator_builds_only_for_constrained_columns():
     contract = {
         "schema": [
             {
-                "name": "order_history",
-                "type": "array<str>",
-                "constraints": {"min_length": 1},
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 1,
+                    "maximum_array_length": 5,
+                },
             },
             {
-                "name": "product_history",
-                "type": "array<int>",
-                "constraints": {"max_length": 3},
+                "name": "aisle_ids",
+                "constraints": {},
             },
         ]
     }
 
-    results = validate_array_lengths(df, contract=contract)
+    metrics = array_length_validator(contract)
 
-    assert results[0].rule_name == "order_history.array_length"
-    assert results[0].category == "array_length"
-    assert results[0].passed is True
-    assert results[0].failed_count == 0
-    assert results[0].invalid_rows is None
-    assert results[0].message == (
-        "All non-null arrays in column 'order_history' "
-        "satisfy the configured length constraint"
-    )
-    assert results[0].metadata == {
-        "column_name": "order_history",
-        "min_length": 1,
-        "max_length": None,
-    }
+    assert len(metrics) == 1
 
-    assert results[1].rule_name == "product_history.array_length"
-    assert results[1].category == "array_length"
-    assert results[1].passed is True
-    assert results[1].failed_count == 0
-    assert results[1].invalid_rows is None
-    assert results[1].message == (
-        "All non-null arrays in column 'product_history' "
-        "satisfy the configured length constraint"
-    )
-    assert results[1].metadata == {
-        "column_name": "product_history",
-        "min_length": None,
-        "max_length": 3,
-    }
+    metric = metrics[0]
+
+    assert metric.alias == "product_ids_array_length"
+    assert metric.rule_name == "product_ids.array_length"
+    assert metric.validation_type == "array_length"
+    assert metric.columns == ("product_ids",)
 
 
-def test_validate_array_length_all_fail(spark):
+def test_array_length_invalid_condition_identifies_exact_invalid_rows(
+    spark,
+):
     df = spark.createDataFrame(
         [
-            (
-                ["3_0", "2_3_4"],
-                [1, 3, -100, 50],
-            ),
-            (
-                [],
-                [2, 4],
-            ),
+            (2, []),
+            (1, [1]),
+            (3, [1, 2]),
+            (5, [1, 2, 3]),
+            (4, [1, 2, 3, 4]),
+            (6, None),
         ],
-        ["order_history", "product_history"],
+        "id INT, product_ids ARRAY<INT>",
     )
 
-    contract = {
-        "schema": [
-            {
-                "name": "order_history",
-                "type": "array<str>",
-                "constraints": {"min_length": 1},
-            },
-            {
-                "name": "product_history",
-                "type": "array<int>",
-                "constraints": {"max_length": 3},
-            },
-        ]
-    }
-
-    results = validate_array_lengths(df, contract=contract)
-
-    assert results[0].passed is False
-    assert results[0].failed_count == 1
-    assert results[0].message == (
-        "Column 'order_history' contains 1 row(s) that violate the "
-        "configured array length constraint"
+    condition = _build_invalid_condition(
+        "product_ids",
+        minimum=1,
+        maximum=3,
     )
-    invalid_rows = {
-        tuple(row["order_history"]) for row in results[0].invalid_rows.collect()
-    }
-    assert invalid_rows == {()}
 
-    assert results[1].passed is False
-    assert results[1].failed_count == 1
-    assert results[1].message == (
-        "Column 'product_history' contains 1 row(s) that violate the "
-        "configured array length constraint"
-    )
-    invalid_rows = {
-        tuple(row["product_history"]) for row in results[1].invalid_rows.collect()
-    }
-    assert invalid_rows == {(1, 3, -100, 50)}
+    invalid_ids = {row["id"] for row in (df.filter(condition).select("id").collect())}
+
+    assert invalid_ids == {2, 4}
 
 
-def test_validate_array_length_null_ignored(spark):
-    schema = StructType(
-        [
-            StructField("order_history", ArrayType(StringType()), True),
-            StructField("product_history", ArrayType(IntegerType()), True),
-            StructField("aisle_history", ArrayType(IntegerType()), True),
-        ]
-    )
+def test_array_length_metric_counts_mixed_valid_and_invalid_arrays(
+    spark,
+):
     df = spark.createDataFrame(
         [
-            (
-                ["3_0"],
-                None,
-                None,
-            ),
-            (
-                None,
-                [1, 2, 3, 4, 5],
-                None,
-            ),
-            (
-                ["10_20", "2_3_4"],
-                [1, 3, -100, 50],
-                None,
-            ),
+            ([],),
+            ([1],),
+            ([1, 2],),
+            ([1, 2, 3],),
+            ([1, 2, 3, 4],),
+            ([1, 2, 3, 4, 5],),
+            (None,),
         ],
-        schema=schema,
+        "product_ids ARRAY<INT>",
     )
 
     contract = {
         "schema": [
             {
-                "name": "order_history",
-                "type": "array<str>",
-                "constraints": {"min_length": 1},
-            },
-            {
-                "name": "product_history",
-                "type": "array<int>",
-                "constraints": {"max_length": 3},
-            },
-            {
-                "name": "aisle_history",
-                "type": "array<int>",
-                "constraints": {"min_length": 3, "max_length": 10},
-            },
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 1,
+                    "maximum_array_length": 3,
+                },
+            }
         ]
     }
 
-    results = validate_array_lengths(df, contract=contract)
+    metrics = array_length_validator(contract)
 
-    assert results[0].passed is True
-    assert results[0].failed_count == 0
+    row = df.agg(*[metric.expression for metric in metrics]).first()
 
-    assert results[1].passed is False
-    assert results[1].failed_count == 2
-    invalid_rows = {
-        tuple(row["product_history"]) for row in results[1].invalid_rows.collect()
-    }
-    assert invalid_rows == {(1, 2, 3, 4, 5), (1, 3, -100, 50)}
-
-    assert results[2].passed is True
-    assert results[2].failed_count == 0
+    assert row["product_ids_array_length"] == 3
 
 
-def test_validate_array_length_with_both_boundaries(spark):
+def test_array_length_metric_returns_zero_when_all_arrays_are_valid(
+    spark,
+):
     df = spark.createDataFrame(
         [
-            (
-                ["3_0", "2_3_4"],
-                [1, 3, -100, 50],
-            ),
-            (
-                ["1_2"],
-                [2, 4, -1, 100, -50],
-            ),
-            (
-                ["3_0", "2_3_4", ""],
-                [1000],
-            ),
+            ([1],),
+            ([1, 2],),
+            ([1, 2, 3],),
         ],
-        ["order_history", "product_history"],
+        "product_ids ARRAY<INT>",
     )
 
     contract = {
         "schema": [
             {
-                "name": "order_history",
-                "type": "array<str>",
-                "constraints": {"min_length": 1, "max_length": 3},
-            },
-            {
-                "name": "product_history",
-                "type": "array<int>",
-                "constraints": {"min_length": 2, "max_length": 4},
-            },
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 1,
+                    "maximum_array_length": 3,
+                },
+            }
         ]
     }
 
-    results = validate_array_lengths(df, contract=contract)
+    metrics = array_length_validator(contract)
 
-    assert results[0].passed is True
+    row = df.agg(*[metric.expression for metric in metrics]).first()
 
-    assert results[1].passed is False
-    assert results[1].failed_count == 2
-    invalid_rows = {
-        tuple(row["product_history"]) for row in results[1].invalid_rows.collect()
-    }
-    assert invalid_rows == {(1000,), (2, 4, -1, 100, -50)}
+    assert row["product_ids_array_length"] == 0
 
 
-def test_validate_array_length_invalid_datatype(spark):
-    df = spark.createDataFrame([(["3_0", "2_3_4"],)], ["order_history"])
+def test_array_length_metric_accepts_exact_minimum_and_maximum(
+    spark,
+):
+    df = spark.createDataFrame(
+        [
+            ([1],),
+            ([1, 2, 3],),
+        ],
+        "product_ids ARRAY<INT>",
+    )
 
     contract = {
         "schema": [
             {
-                "name": "order_history",
-                "type": "integer",
-                "constraints": {"min_length": 1, "max_length": 3},
-            },
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 1,
+                    "maximum_array_length": 3,
+                },
+            }
         ]
     }
 
-    with pytest.raises(
-        InvalidConstraintError, match="has constraint length for an array"
-    ):
-        validate_array_lengths(df, contract=contract)
+    metrics = array_length_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["product_ids_array_length"] == 0
+
+
+def test_array_length_metric_ignores_null_arrays(spark):
+    df = spark.createDataFrame(
+        [
+            (None,),
+            (None,),
+        ],
+        "product_ids ARRAY<INT>",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 1,
+                    "maximum_array_length": 3,
+                },
+            }
+        ]
+    }
+
+    metrics = array_length_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["product_ids_array_length"] == 0
+
+
+def test_array_length_metric_supports_minimum_only(spark):
+    df = spark.createDataFrame(
+        [
+            ([],),
+            ([1],),
+            ([1, 2],),
+        ],
+        "product_ids ARRAY<INT>",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 2,
+                },
+            }
+        ]
+    }
+
+    metrics = array_length_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["product_ids_array_length"] == 2
+
+
+def test_array_length_metric_supports_maximum_only(spark):
+    df = spark.createDataFrame(
+        [
+            ([],),
+            ([1],),
+            ([1, 2],),
+            ([1, 2, 3],),
+        ],
+        "product_ids ARRAY<INT>",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_ids",
+                "constraints": {
+                    "maximum_array_length": 2,
+                },
+            }
+        ]
+    }
+
+    metrics = array_length_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["product_ids_array_length"] == 1
+
+
+def test_array_length_metric_supports_equal_minimum_and_maximum(
+    spark,
+):
+    df = spark.createDataFrame(
+        [
+            ([1],),
+            ([1, 2],),
+            ([3, 4],),
+            ([1, 2, 3],),
+        ],
+        "product_ids ARRAY<INT>",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 2,
+                    "maximum_array_length": 2,
+                },
+            }
+        ]
+    }
+
+    metrics = array_length_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["product_ids_array_length"] == 2
+
+
+def test_array_length_validator_accepts_zero_as_minimum(spark):
+    df = spark.createDataFrame(
+        [
+            ([],),
+            ([1],),
+            ([1, 2],),
+        ],
+        "product_ids ARRAY<INT>",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 0,
+                    "maximum_array_length": 2,
+                },
+            }
+        ]
+    }
+
+    metrics = array_length_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["product_ids_array_length"] == 0
 
 
 @pytest.mark.parametrize(
-    ("raw_data", "min_length"),
+    "constraint_name,value",
     [
-        ({"order_history": ["3_0"]}, 0.5),
-        ({"order_history": ["3_0"]}, True),
-        ({"order_history": ["3_0"]}, -10),
+        ("minimum_array_length", -1),
+        ("minimum_array_length", 2.0),
+        ("minimum_array_length", "2"),
+        ("minimum_array_length", True),
+        ("maximum_array_length", -1),
+        ("maximum_array_length", 3.0),
+        ("maximum_array_length", "3"),
+        ("maximum_array_length", False),
     ],
 )
-def test_validate_array_length_invalid_minimum_constraint(spark, raw_data, min_length):
-    df = spark.createDataFrame([Row(**raw_data)])
-
+def test_array_length_validator_rejects_invalid_constraints(
+    constraint_name,
+    value,
+):
     contract = {
         "schema": [
             {
-                "name": "order_history",
-                "type": "array<str>",
-                "constraints": {"min_length": min_length, "max_length": 3},
-            },
+                "name": "product_ids",
+                "constraints": {
+                    constraint_name: value,
+                },
+            }
         ]
     }
 
     with pytest.raises(
-        InvalidConstraintError, match="Minimum array length must be a positive integer"
+        InvalidConstraintError,
+        match="must be a non-negative integer",
     ):
-        validate_array_lengths(df, contract=contract)
+        array_length_validator(contract)
 
 
-@pytest.mark.parametrize(
-    ("raw_data", "max_length"),
-    [
-        ({"order_history": ["3_0"]}, 0.5),
-        ({"order_history": ["3_0"]}, True),
-        ({"order_history": ["3_0"]}, -10),
-    ],
-)
-def test_validate_array_length_invalid_maximum_constraint(spark, raw_data, max_length):
-    df = spark.createDataFrame([Row(**raw_data)])
-
+def test_array_length_validator_rejects_minimum_greater_than_maximum():
     contract = {
         "schema": [
             {
-                "name": "order_history",
-                "type": "array<str>",
-                "constraints": {"min_length": 1, "max_length": max_length},
-            },
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 5,
+                    "maximum_array_length": 2,
+                },
+            }
         ]
     }
 
     with pytest.raises(
-        InvalidConstraintError, match="Maximum array length must be a positive integer"
+        InvalidConstraintError,
+        match="minimum array length cannot be greater",
     ):
-        validate_array_lengths(df, contract=contract)
+        array_length_validator(contract)
 
 
-def test_validate_array_length_minimum_greater_than_maximum(spark):
-    df = spark.createDataFrame([(["3_0", "2_3_4"],)], ["order_history"])
-
-    contract = {
-        "schema": [
-            {
-                "name": "order_history",
-                "type": "array<str>",
-                "constraints": {"min_length": 5, "max_length": 2},
-            },
-        ]
-    }
-
-    with pytest.raises(
-        InvalidConstraintError, match="min_length cannot be greater than max_length"
-    ):
-        validate_array_lengths(df, contract=contract)
-
-
-def test_validate_array_length_empty_dataframe(spark):
-    schema = StructType([StructField("order_history", ArrayType(StringType()), False)])
-    df = spark.createDataFrame([], schema=schema)
-
-    contract = {
-        "schema": [
-            {
-                "name": "order_history",
-                "type": "array<str>",
-                "constraints": {"min_length": 2, "max_length": 5},
-            },
-        ]
-    }
-
-    result = validate_array_lengths(df, contract=contract)[0]
-
-    assert result.passed is True
-
-
-def test_validate_array_length_invalid_rows_limit(spark):
+def test_multiple_array_length_metrics_can_be_aggregated_together(
+    spark,
+):
     df = spark.createDataFrame(
-        [([i for i in range(k)],) for k in range(50)], ["product_history"]
+        [
+            ([1], [10, 20]),
+            ([], [10]),
+            ([1, 2, 3], [10, 20, 30]),
+        ],
+        "product_ids ARRAY<INT>, aisle_ids ARRAY<INT>",
     )
 
     contract = {
         "schema": [
             {
-                "name": "product_history",
-                "type": "array<int>",
-                "constraints": {"min_length": 50},
+                "name": "product_ids",
+                "constraints": {
+                    "minimum_array_length": 1,
+                    "maximum_array_length": 2,
+                },
+            },
+            {
+                "name": "aisle_ids",
+                "constraints": {
+                    "minimum_array_length": 2,
+                    "maximum_array_length": 2,
+                },
             },
         ]
     }
 
-    result = validate_array_lengths(df, contract=contract)[0]
+    metrics = array_length_validator(contract)
 
-    assert result.passed is False
-    assert result.failed_count == 50
-    assert result.invalid_rows.count() == 30
-    invalid_lengths = [
-        len(row["product_history"]) for row in result.invalid_rows.collect()
-    ]
-    assert set(invalid_lengths).issubset(set(range(50)))
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["product_ids_array_length"] == 2
+    assert row["aisle_ids_array_length"] == 2
