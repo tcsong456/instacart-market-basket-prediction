@@ -7,6 +7,7 @@ from pyspark.sql import functions as F
 
 from instacart_etl_rnn.validation.exceptions import InvalidContractError
 from instacart_etl_rnn.validation.models import ValidationResult
+from instacart_etl_rnn.validation.utils import is_non_empty_string_list
 
 
 def validate_uniqueness(
@@ -14,11 +15,7 @@ def validate_uniqueness(
     *,
     columns: list[str],
 ) -> ValidationResult:
-    if (
-        not isinstance(columns, list)
-        or not columns
-        or not all(isinstance(column, str) and column.strip() for column in columns)
-    ):
+    if not is_non_empty_string_list(columns):
         raise InvalidContractError("columns must be a non-empty list of column names")
 
     duplicate_columns = [

@@ -7,6 +7,10 @@ from pyspark.sql import functions as F
 
 from instacart_etl_rnn.validation.exceptions import InvalidContractError
 from instacart_etl_rnn.validation.models import ValidationResult
+from instacart_etl_rnn.validation.utils import (
+    is_non_empty_string,
+    is_non_empty_string_list,
+)
 
 
 def _validate_referential_integrity_arguments(
@@ -59,13 +63,7 @@ def extract_foreign_keys(
         child_columns = relationship.get("child_columns")
         parent = relationship.get("parent")
 
-        if (
-            not isinstance(child_columns, list)
-            or not child_columns
-            or not all(
-                isinstance(column, str) and column.strip() for column in child_columns
-            )
-        ):
+        if not is_non_empty_string_list(child_columns):
             raise InvalidContractError(
                 "Foreign-key relationship must contain a non-empty 'child_columns' list"
             )
@@ -78,18 +76,12 @@ def extract_foreign_keys(
         parent_dataset = parent.get("dataset")
         parent_columns = parent.get("columns")
 
-        if not isinstance(parent_dataset, str) or not parent_dataset.strip():
+        if not is_non_empty_string(parent_dataset):
             raise InvalidContractError(
                 "Foreign-key parent must contain a valid dataset name"
             )
 
-        if (
-            not isinstance(parent_columns, list)
-            or not parent_columns
-            or not all(
-                isinstance(column, str) and column.strip() for column in parent_columns
-            )
-        ):
+        if not is_non_empty_string_list(parent_columns):
             raise InvalidContractError(
                 "Foreign-key parent must contain a non-empty 'columns' list"
             )

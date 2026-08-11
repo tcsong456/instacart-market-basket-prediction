@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from pyspark.sql.types import IntegerType, StructField, StructType
 
@@ -27,7 +29,7 @@ def test_validate_row_logic_all_rules_pass(
 
     results = validate_row_logic(
         df,
-        row_logic_contract,
+        contract=row_logic_contract,
     )
 
     assert len(results) == 5
@@ -37,10 +39,7 @@ def test_validate_row_logic_all_rules_pass(
         assert result.passed is True
         assert result.failed_count == 0
         assert result.invalid_rows is None
-        assert (
-            result.message
-            == f"Rule: {result.rule_name} complies with the data contract rule"
-        )
+        assert result.message == f"Rule {result.rule_name!r} passed"
 
 
 def test_validate_row_logic_returns_expected_failure_counts(
@@ -61,7 +60,7 @@ def test_validate_row_logic_returns_expected_failure_counts(
 
     results = validate_row_logic(
         df,
-        row_logic_contract,
+        contract=row_logic_contract,
     )
 
     results_by_name = {result.rule_name: result for result in results}
@@ -82,7 +81,9 @@ def test_validate_row_logic_returns_expected_failure_counts(
         assert result.passed is False
         assert result.failed_count == expected_count
         assert result.invalid_rows is not None
-        assert result.message == f"Rule: {rule_name} failed the data contract rule"
+        assert result.message == (
+            f"Rule {rule_name!r} failed for {expected_count} row(s)"
+        )
 
 
 def test_validate_row_logic_returns_correct_invalid_rows(
@@ -102,22 +103,28 @@ def test_validate_row_logic_returns_correct_invalid_rows(
 
     results = validate_row_logic(
         df,
-        row_logic_contract,
+        contract=row_logic_contract,
     )
 
     results_by_name = {result.rule_name: result for result in results}
 
-    result_1 = results_by_name["first_order_has_no_prior_interval"]
-    assert result_1.invalid_rows is not None
-    invalid_rows_1 = result_1.invalid_rows.collect()
-    assert len(invalid_rows_1) == 1
-    row = invalid_rows_1[0]
+    result = results_by_name["first_order_has_no_prior_interval"]
+
+    assert result.invalid_rows is not None
+
+    invalid_rows = result.invalid_rows.collect()
+
+    assert len(invalid_rows) == 1
+
+    row = invalid_rows[0]
+
     assert row["user_id"] == 2
     assert row["order_number"] == 1
-    assert row["days_since_prior_order"] == 10
+    assert row["days_since_prior_order"] == 10.0
 
-    result_2 = results_by_name["contiguous_order_numbers"]
-    assert result_2.invalid_rows is not None
+    result = results_by_name["contiguous_order_numbers"]
+
+    assert result.invalid_rows is not None
 
     actual_rows = {
         (
@@ -125,7 +132,7 @@ def test_validate_row_logic_returns_correct_invalid_rows(
             row["order_number"],
             row["days_since_prior_order"],
         )
-        for row in result_2.invalid_rows.collect()
+        for row in result.invalid_rows.collect()
     }
 
     expected_rows = {
@@ -140,9 +147,9 @@ def test_validate_row_logic_returns_correct_invalid_rows(
         "last_order_per_user_is_train_or_test",
         "only_one_train_or_test_per_user",
     ]
-    for rule in passed_rules:
-        result = results_by_name[rule]
-        assert result.passed
+
+    for rule_name in passed_rules:
+        assert results_by_name[rule_name].passed
 
 
 def test_validate_row_logic_limits_invalid_rows(
@@ -151,12 +158,13 @@ def test_validate_row_logic_limits_invalid_rows(
     row_logic_contract,
 ):
     df = spark.createDataFrame(
-        [(user_id, 1, "prior", 10.0) for user_id in range(1, 31)], schema=orders_schema
+        [(user_id, 1, "prior", 10.0) for user_id in range(1, 31)],
+        schema=orders_schema,
     )
 
     results = validate_row_logic(
         df,
-        row_logic_contract,
+        contract=row_logic_contract,
     )
 
     results_by_name = {result.rule_name: result for result in results}
@@ -164,126 +172,583 @@ def test_validate_row_logic_limits_invalid_rows(
     result = results_by_name["first_order_has_no_prior_interval"]
 
     assert result.failed_count == 30
+    assert result.invalid_rows is not None
     assert result.invalid_rows.count() == 20
 
 
-def test_validate_row_logic_empty_dataframe_passes(
+def test_validate_row_logic_returns_empty_when_no_rules(
     spark,
     orders_schema,
-    row_logic_contract,
 ):
     df = spark.createDataFrame(
-        [],
+        [
+            (1, 1, "prior", None),
+        ],
         schema=orders_schema,
     )
 
-    results = validate_row_logic(
-        df,
-        row_logic_contract,
-    )
-
-    assert len(results) == 5
-
-    for result in results:
-        assert result.passed is True
-        assert result.failed_count == 0
-        assert result.invalid_rows is None
-
-
-def test_validate_row_logic_empty_rule(spark, orders_schema):
-    df = spark.createDataFrame([(1, 1, "prior", None)], schema=orders_schema)
-
-    contract = {"rules": []}
+    contract = {
+        "rules": [],
+    }
 
     results = validate_row_logic(
         df,
-        contract,
+        contract=contract,
     )
 
     assert results == []
 
 
 @pytest.mark.parametrize(
-    ("contract", "exception_message"),
+    "name",
     [
-        (
-            {
-                "derived_fields": [
-                    {
-                        "name": "train_or_test_count",
-                        "type": "integer",
-                        "column": "order_number",
-                    }
-                ],
-                "rules": [{"name": "dummy_rule"}],
-            },
-            "Missing both aggregation and expression.",
-        ),
-        (
-            {
-                "derived_fields": [
-                    {
-                        "name": "train_or_test_count",
-                        "type": "integer",
-                        "aggregation": "min_max",
-                    }
-                ],
-                "rules": [{"name": "dummy_rule"}],
-            },
-            "Aggregation type",
-        ),
-        (
-            {
-                "derived_fields": [
-                    {
-                        "name": "train_or_test_count",
-                        "type": "integer",
-                        "aggregation": "min",
-                    }
-                ],
-                "rules": [{"name": "dummy_rule"}],
-            },
-            "does not provide its aggregated column",
-        ),
-        (
-            {
-                "derived_fields": [
-                    {
-                        "name": "train_or_test_count",
-                        "column": "order_number",
-                        "aggregation": "min",
-                        "expression": "order_number = user_max_order_number",
-                    }
-                ],
-                "rules": [{"name": "dummy_rule"}],
-            },
-            "Only one of aggregation or expression should be given",
-        ),
-        (
-            {
-                "rules": [
-                    {
-                        "expression": (
-                            "order_number <> 1 OR days_since_prior_order is NULL"
-                        )
-                    }
-                ]
-            },
-            "Every rule must have a name",
-        ),
-        (
-            {"rules": [{"name": "last_order_per_user_is_train_or_test"}]},
-            "does not have its expression",
-        ),
+        None,
+        "",
+        "   ",
+        123,
+        [],
     ],
 )
-def test_validate_row_logic_invalid_contract(
-    spark, contract, exception_message, orders_schema
+def test_validate_row_logic_rejects_invalid_rule_name(
+    spark,
+    orders_schema,
+    name,
 ):
-    df = spark.createDataFrame([(1, 1, "prior", None)], schema=orders_schema)
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
 
-    with pytest.raises(InvalidContractError, match=exception_message):
-        validate_row_logic(df, contract)
+    contract = {
+        "rules": [
+            {
+                "name": name,
+                "expression": "order_number > 0",
+            }
+        ]
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match="Every business rule must have a non-empty name",
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+def test_validate_row_logic_rejects_duplicate_rule_names(
+    spark,
+    orders_schema,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "rules": [
+            {
+                "name": "same_rule",
+                "expression": "order_number > 0",
+            },
+            {
+                "name": "same_rule",
+                "expression": "order_number < 10",
+            },
+        ]
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape("Duplicate business rule name: 'same_rule'"),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        None,
+        "",
+        "   ",
+        123,
+        [],
+    ],
+)
+def test_validate_row_logic_rejects_invalid_rule_expression(
+    spark,
+    orders_schema,
+    expression,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "rules": [
+            {
+                "name": "test_rule",
+                "expression": expression,
+            }
+        ]
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape("Rule 'test_rule' must define a non-empty expression"),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        None,
+        "",
+        "   ",
+        123,
+    ],
+)
+def test_validate_row_logic_rejects_invalid_derived_field_name(
+    spark,
+    orders_schema,
+    name,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": name,
+                "aggregation": "max",
+                "column": "order_number",
+                "partition_by": ["user_id"],
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match="Every derived field must have a non-empty name",
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+def test_validate_row_logic_rejects_duplicate_derived_field_names(
+    spark,
+    orders_schema,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "user_order_number",
+                "aggregation": "min",
+                "column": "order_number",
+                "partition_by": ["user_id"],
+            },
+            {
+                "name": "user_order_number",
+                "aggregation": "max",
+                "column": "order_number",
+                "partition_by": ["user_id"],
+            },
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape("Duplicate derived field name: 'user_order_number'"),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+def test_validate_row_logic_rejects_missing_aggregation_and_expression(
+    spark,
+    orders_schema,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "train_or_test_count",
+                "type": "integer",
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape(
+            "Derived field 'train_or_test_count' "
+            "must define either 'aggregation' or 'expression'"
+        ),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+def test_validate_row_logic_rejects_both_aggregation_and_expression(
+    spark,
+    orders_schema,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "train_or_test_count",
+                "aggregation": "min",
+                "column": "order_number",
+                "partition_by": ["user_id"],
+                "expression": "order_number > 0",
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape(
+            "Derived field 'train_or_test_count' "
+            "cannot define both 'aggregation' and 'expression'"
+        ),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+def test_validate_row_logic_rejects_unsupported_aggregation(
+    spark,
+    orders_schema,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "train_or_test_count",
+                "aggregation": "min_max",
+                "column": "order_number",
+                "partition_by": ["user_id"],
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape(
+            "Aggregation 'min_max' for derived field "
+            "'train_or_test_count' is not supported"
+        ),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        None,
+        "",
+        "   ",
+        123,
+    ],
+)
+def test_validate_row_logic_rejects_invalid_aggregate_column(
+    spark,
+    orders_schema,
+    column,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "user_min_order_number",
+                "aggregation": "min",
+                "column": column,
+                "partition_by": ["user_id"],
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape(
+            "Derived field 'user_min_order_number' using 'min' must define a column"
+        ),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+@pytest.mark.parametrize(
+    "partition_by",
+    [
+        None,
+        [],
+        "",
+        "user_id",
+        ["user_id", ""],
+        ["user_id", "   "],
+        ["user_id", 123],
+    ],
+)
+def test_validate_row_logic_rejects_invalid_partition_by(
+    spark,
+    orders_schema,
+    partition_by,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "user_max_order_number",
+                "aggregation": "max",
+                "column": "order_number",
+                "partition_by": partition_by,
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape(
+            "Derived aggregate field 'user_max_order_number' "
+            "must define a non-empty 'partition_by' list"
+        ),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+def test_validate_row_logic_rejects_duplicate_partition_columns(
+    spark,
+    orders_schema,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "user_max_order_number",
+                "aggregation": "max",
+                "column": "order_number",
+                "partition_by": [
+                    "user_id",
+                    "user_id",
+                ],
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape(
+            "'partition_by' for derived field "
+            "'user_max_order_number' cannot contain "
+            "duplicate columns"
+        ),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        None,
+        "",
+        "   ",
+        123,
+    ],
+)
+def test_validate_row_logic_rejects_invalid_conditional_count_condition(
+    spark,
+    orders_schema,
+    condition,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "train_or_test_count",
+                "aggregation": "conditional_count",
+                "condition": condition,
+                "partition_by": ["user_id"],
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape(
+            "Derived field 'train_or_test_count' using "
+            "'conditional_count' must define a non-empty "
+            "condition"
+        ),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "",
+        "   ",
+        123,
+    ],
+)
+def test_validate_row_logic_rejects_invalid_derived_expression(
+    spark,
+    orders_schema,
+    expression,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": [
+            {
+                "name": "is_valid_order",
+                "expression": expression,
+            }
+        ],
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match=re.escape(
+            "Expression for derived field 'is_valid_order' must be a non-empty string"
+        ),
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
 
 
 def test_group_aggregate_fields_groups_same_partitions():
@@ -376,7 +841,10 @@ def test_build_aggregate_expression(
     data,
     expected,
 ):
-    df = spark.createDataFrame(data, ["value"])
+    df = spark.createDataFrame(
+        data,
+        ["value"],
+    )
 
     result = df.agg(_build_aggregate_expression(field).alias("result")).first()[
         "result"
@@ -411,21 +879,49 @@ def test_build_aggregate_expression_conditional_count(
     assert result == 2
 
 
-def test_build_aggregate_expression_unsupported_aggregation():
+def test_build_aggregate_expression_conditional_count_treats_null_as_false(
+    spark,
+):
+    df = spark.createDataFrame(
+        [
+            (1,),
+            (None,),
+        ],
+        ["value"],
+    )
+
+    field = {
+        "aggregation": "conditional_count",
+        "condition": "value > 0",
+    }
+
+    result = df.agg(_build_aggregate_expression(field).alias("result")).first()[
+        "result"
+    ]
+
+    assert result == 1
+
+
+def test_build_aggregate_expression_rejects_unsupported_aggregation():
     field = {
         "aggregation": "average",
         "column": "value",
     }
 
     with pytest.raises(
-        ValueError,
-        match="Unsupported aggregation: average",
+        InvalidContractError,
+        match=re.escape("Unsupported aggregation: 'average'"),
     ):
         _build_aggregate_expression(field)
 
 
 @pytest.mark.parametrize(
-    ("rule", "failed_count", "passed", "failed_rows"),
+    (
+        "rule",
+        "failed_count",
+        "passed",
+        "failed_rows",
+    ),
     [
         (
             {
@@ -445,7 +941,9 @@ def test_build_aggregate_expression_unsupported_aggregation():
             },
             1,
             False,
-            {(None, 2, None, None)},
+            {
+                (None, 2, None, None),
+            },
         ),
         (
             {
@@ -454,19 +952,21 @@ def test_build_aggregate_expression_unsupported_aggregation():
             },
             1,
             False,
-            {(1, 3, "prior", 20)},
+            {
+                (1, 3, "prior", 20.0),
+            },
         ),
         (
             {
                 "name": "only_one_train_or_test_per_user",
-                "expression": "train_or_test_count = 1",
+                "expression": ("train_or_test_count = 1"),
             },
             3,
             False,
             {
                 (1, 1, "prior", None),
-                (1, 3, "prior", 20),
-                (1, None, None, 10),
+                (1, 3, "prior", 20.0),
+                (1, None, None, 10.0),
             },
         ),
         (
@@ -482,18 +982,32 @@ def test_build_aggregate_expression_unsupported_aggregation():
             False,
             {
                 (1, 1, "prior", None),
-                (1, 3, "prior", 20),
-                (1, None, None, 10),
+                (1, 3, "prior", 20.0),
+                (1, None, None, 10.0),
             },
         ),
     ],
 )
-def test_validate_row_handles_null_rule_results(
-    spark, orders_schema, row_logic_contract, rule, failed_count, passed, failed_rows
+def test_validate_row_logic_handles_null_rule_results(
+    spark,
+    orders_schema,
+    row_logic_contract,
+    rule,
+    failed_count,
+    passed,
+    failed_rows,
 ):
     schema = StructType(
-        [StructField("user_id", IntegerType(), True), *orders_schema.fields[1:]]
+        [
+            StructField(
+                "user_id",
+                IntegerType(),
+                True,
+            ),
+            *orders_schema.fields[1:],
+        ]
     )
+
     df = spark.createDataFrame(
         [
             (1, 1, "prior", None),
@@ -506,15 +1020,21 @@ def test_validate_row_handles_null_rule_results(
     )
 
     contract = {
-        "derived_fields": row_logic_contract["derived_fields"],
-        "rules": [rule],
+        "derived_fields": (row_logic_contract["derived_fields"]),
+        "rules": [
+            rule,
+        ],
     }
 
-    result = validate_row_logic(df, contract=contract)[0]
+    result = validate_row_logic(
+        df,
+        contract=contract,
+    )[0]
 
     assert result.passed is passed
     assert result.failed_count == failed_count
-    invalid_rows = (
+
+    actual_invalid_rows = (
         {
             (
                 row["user_id"],
@@ -524,7 +1044,82 @@ def test_validate_row_handles_null_rule_results(
             )
             for row in result.invalid_rows.collect()
         }
-        if not passed
+        if result.invalid_rows is not None
         else set()
     )
-    assert invalid_rows == failed_rows
+
+    assert actual_invalid_rows == failed_rows
+
+
+@pytest.mark.parametrize(
+    "derived_fields",
+    [
+        {},
+        "not-a-list",
+        123,
+        True,
+        None,
+    ],
+)
+def test_validate_row_logic_rejects_non_list_derived_fields(
+    spark,
+    orders_schema,
+    derived_fields,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "derived_fields": derived_fields,
+        "rules": [
+            {
+                "name": "dummy",
+                "expression": "order_number > 0",
+            }
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match="'derived_fields' must be a list",
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )
+
+
+@pytest.mark.parametrize(
+    "rules",
+    [
+        {},
+        "not-a-list",
+        123,
+        True,
+        None,
+    ],
+)
+def test_validate_row_logic_rejects_non_list_rules(
+    spark,
+    orders_schema,
+    rules,
+):
+    df = spark.createDataFrame(
+        [(1, 1, "prior", None)],
+        schema=orders_schema,
+    )
+
+    contract = {
+        "rules": rules,
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match="'rules' must be a list",
+    ):
+        validate_row_logic(
+            df,
+            contract=contract,
+        )

@@ -1,4 +1,5 @@
 from numbers import Integral, Number
+from typing import Any
 
 
 def is_number(value: object) -> bool:
@@ -15,3 +16,15 @@ def is_non_negative_integer(value: object) -> bool:
 
 def is_positive_integer(value: object) -> bool:
     return isinstance(value, Integral) and not isinstance(value, bool) and value > 0
+
+
+def is_non_empty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def is_non_empty_string_list(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(is_non_empty_string(item) for item in value)
+    )
