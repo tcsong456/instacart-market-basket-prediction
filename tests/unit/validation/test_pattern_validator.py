@@ -32,6 +32,37 @@ def test_pattern_invalid_condition_identifies_exact_invalid_rows(
     assert invalid_ids == {3, 4, 5}
 
 
+def test_pattern_metric_counts_invalid_values(spark):
+    df = spark.createDataFrame(
+        [
+            ("AB12",),
+            ("XY99",),
+            ("ab12",),
+            ("ABC12",),
+            ("",),
+            (None,),
+        ],
+        "code STRING",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "code",
+                "constraints": {
+                    "pattern": r"^[A-Z]{2}[0-9]{2}$",
+                },
+            }
+        ]
+    }
+
+    metrics = pattern_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["code_pattern"] == 3
+
+
 def test_pattern_metric_returns_zero_when_all_values_match(
     spark,
 ):

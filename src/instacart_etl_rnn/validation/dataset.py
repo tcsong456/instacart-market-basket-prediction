@@ -4,7 +4,7 @@ from typing import Any
 from pyspark.sql import DataFrame
 
 from instacart_etl_rnn.validation.allowed_values import allowed_values_validator
-from instacart_etl_rnn.validation.array_length import validate_array_lengths
+from instacart_etl_rnn.validation.array_length import array_length_validator
 from instacart_etl_rnn.validation.exceptions import (
     DataValidationError,
     EmptyDatasetError,
@@ -232,7 +232,7 @@ def validate_dataset(
 
     results.extend(
         _apply_thresholds(
-            results=validate_array_lengths(df, contract=contract),
+            results=array_length_validator(df, contract=contract),
             total_rows=total_rows,
             validation_type="array_length",
             contract=contract,

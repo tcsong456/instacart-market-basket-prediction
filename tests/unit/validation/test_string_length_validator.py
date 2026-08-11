@@ -62,6 +62,38 @@ def test_string_length_invalid_condition_identifies_exact_invalid_rows(
     assert invalid_ids == {1, 2, 5}
 
 
+def test_string_length_metric_counts_invalid_values(spark):
+    df = spark.createDataFrame(
+        [
+            ("",),
+            ("a",),
+            ("ab",),
+            ("abc",),
+            ("abcdef",),
+            (None,),
+        ],
+        "product_name STRING",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "product_name",
+                "constraints": {
+                    "minimum_string_length": 2,
+                    "maximum_string_length": 5,
+                },
+            }
+        ]
+    }
+
+    metrics = string_length_validator(contract)
+
+    row = df.agg(*[metric.expression for metric in metrics]).first()
+
+    assert row["product_name_string_length"] == 3
+
+
 def test_string_length_metric_returns_zero_when_all_values_are_valid(
     spark,
 ):
