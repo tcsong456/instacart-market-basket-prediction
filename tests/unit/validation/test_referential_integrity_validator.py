@@ -6,7 +6,10 @@ from pyspark.sql.types import (
 )
 
 from instacart_etl_rnn.validation.exceptions import InvalidContractError
-from instacart_etl_rnn.validation.referential_integrity import validate_foreign_keys
+from instacart_etl_rnn.validation.referential_integrity import (
+    _validate_referential_integrity,
+    validate_foreign_keys,
+)
 
 
 def test_validate_foreign_keys_passes_when_all_parent_keys_exist(
@@ -548,7 +551,7 @@ def test_referential_integrity_ignores_partial_null_composite_keys(
         "id INT, child_a INT, child_b INT",
     )
 
-    result = validate_foreign_keys(
+    result = _validate_referential_integrity(
         child_df=child_df,
         parent_df=parent_df,
         child_columns=["child_a", "child_b"],
@@ -631,14 +634,14 @@ def test_referential_integrity_ignores_null_parent_keys(
         "child_id INT",
     )
 
-    result = validate_foreign_keys(
+    result = _validate_referential_integrity(
         child_df=child_df,
         parent_df=parent_df,
         child_columns=["child_id"],
         parent_columns=["parent_id"],
     )
 
-    assert not result.passed
+    assert result.passed is False
     assert result.failed_count == 1
 
     invalid_keys = {row["child_id"] for row in result.invalid_rows.collect()}
@@ -665,7 +668,7 @@ def test_referential_integrity_does_not_match_partial_null_parent_keys(
         "child_a INT, child_b INT",
     )
 
-    result = validate_foreign_keys(
+    result = _validate_referential_integrity(
         child_df=child_df,
         parent_df=parent_df,
         child_columns=["child_a", "child_b"],

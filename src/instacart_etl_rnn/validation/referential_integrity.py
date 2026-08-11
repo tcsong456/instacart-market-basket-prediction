@@ -120,7 +120,7 @@ def _validate_referential_integrity(
     parent_df: DataFrame,
     child_columns: list[str],
     parent_columns: list[str],
-    rule_name: str,
+    rule_name: str = "",
 ) -> ValidationResult:
     _validate_referential_integrity_arguments(
         child_df=child_df,
