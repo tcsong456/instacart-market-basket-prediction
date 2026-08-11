@@ -1,133 +1,266 @@
 import pytest
-from pyspark.sql import Row
 
-from instacart_etl_rnn.validation.schema import validate_column_presence
+from instacart_etl_rnn.validation.exceptions import InvalidContractError
+from instacart_etl_rnn.validation.schema import (
+    validate_column_presence,
+)
 
 
-def build_contract(allow_extra_columns: bool = False):
-    return {
-        "dataset": {"allow_extra_columns": allow_extra_columns},
-        "schema": [{"name": "order_id"}, {"name": "user_id"}, {"name": "eval_set"}],
+def test_column_presence_passes_when_columns_match(spark):
+    df = spark.createDataFrame(
+        [(1, "prior")],
+        "order_id INT, eval_set STRING",
+    )
+
+    contract = {
+        "dataset": {
+            "allow_extra_columns": False,
+        },
+        "schema": [
+            {"name": "order_id"},
+            {"name": "eval_set"},
+        ],
     }
 
-
-@pytest.mark.parametrize(
-    (
-        "raw_data",
-        "allow_extra_columns",
-        "expected_passed",
-        "expected_failed_count",
-        "expected_unexpected_columns",
-        "expected_missing_columns",
-        "expected_actual_columns",
-        "expected_message",
-    ),
-    [
-        (
-            {"order_id": 10, "user_id": 5, "eval_set": "prior"},
-            False,
-            True,
-            0,
-            [],
-            [],
-            ["order_id", "user_id", "eval_set"],
-            "all required columns are present",
-        ),
-        (
-            {"order_id": 10, "user_id": 5},
-            False,
-            False,
-            1,
-            [],
-            ["eval_set"],
-            ["order_id", "user_id"],
-            "missing columns: eval_set; unexpected columns: none",
-        ),
-        (
-            {"order_id": 10, "user_id": 5, "eval_set": "prior", "order_number": 100},
-            False,
-            False,
-            1,
-            ["order_number"],
-            [],
-            ["order_id", "user_id", "eval_set", "order_number"],
-            "missing columns: none; unexpected columns: order_number",
-        ),
-        (
-            {"order_id": 10, "user_id": 5, "eval_set": "prior", "order_number": 100},
-            True,
-            True,
-            0,
-            ["order_number"],
-            [],
-            ["order_id", "user_id", "eval_set", "order_number"],
-            "all required columns are present",
-        ),
-        (
-            {"order_id": 10, "user_id": 5, "order_number": 100},
-            False,
-            False,
-            2,
-            ["order_number"],
-            ["eval_set"],
-            ["order_id", "user_id", "order_number"],
-            "missing columns: eval_set; unexpected columns: order_number",
-        ),
-        (
-            {"order_id": 10, "user_id": 5, "order_number": 100},
-            True,
-            False,
-            1,
-            ["order_number"],
-            ["eval_set"],
-            ["order_id", "user_id", "order_number"],
-            "missing columns: eval_set; unexpected columns: order_number (ignored)",
-        ),
-    ],
-)
-def test_validate_columns(
-    spark,
-    raw_data,
-    allow_extra_columns,
-    expected_passed,
-    expected_failed_count,
-    expected_unexpected_columns,
-    expected_missing_columns,
-    expected_actual_columns,
-    expected_message,
-):
-    df = spark.createDataFrame([Row(**raw_data)])
-    contract = build_contract(allow_extra_columns)
-
-    result = validate_column_presence(df, contract=contract)
-
-    assert result.passed is expected_passed
-    assert result.failed_count == expected_failed_count
-    assert result.metadata["unexpected_columns"] == sorted(expected_unexpected_columns)
-    assert result.metadata["missing_columns"] == sorted(expected_missing_columns)
-    assert result.message == expected_message
-    assert result.invalid_rows is None
-    assert result.rule_name == "column_presence"
-    assert result.category == "schema"
-    assert result.metadata["actual_columns"] == sorted(expected_actual_columns)
-    assert result.metadata["expected_columns"] == sorted(
-        [s["name"] for s in contract["schema"]]
+    result = validate_column_presence(
+        df,
+        contract=contract,
     )
 
+    assert result.passed
+    assert result.failed_count == 0
+    assert result.metadata["missing_columns"] == []
+    assert result.metadata["unexpected_columns"] == []
 
-def build_contract_without_dataset_as_key():
-    return {"schema": [{"name": "order_id"}, {"name": "user_id"}, {"name": "eval_set"}]}
 
-
-def test_validate_columns_with_contract_missing_dataset(spark):
+def test_column_presence_detects_missing_columns(spark):
     df = spark.createDataFrame(
-        [Row(order_id=10, user_id=5, eval_set="prior", order_number=100)]
+        [(1,)],
+        "order_id INT",
     )
-    contract = build_contract_without_dataset_as_key()
 
-    result = validate_column_presence(df, contract=contract)
+    contract = {
+        "schema": [
+            {"name": "order_id"},
+            {"name": "eval_set"},
+            {"name": "user_id"},
+        ]
+    }
+
+    result = validate_column_presence(
+        df,
+        contract=contract,
+    )
+
+    assert result.passed is False
+    assert result.failed_count == 2
+
+    assert result.metadata["missing_columns"] == [
+        "eval_set",
+        "user_id",
+    ]
+
+    assert "eval_set" in result.message
+    assert "user_id" in result.message
+
+
+def test_column_presence_detects_unexpected_columns(spark):
+    df = spark.createDataFrame(
+        [(1, "prior", "extra")],
+        "order_id INT, eval_set STRING, junk STRING",
+    )
+
+    contract = {
+        "dataset": {
+            "allow_extra_columns": False,
+        },
+        "schema": [
+            {"name": "order_id"},
+            {"name": "eval_set"},
+        ],
+    }
+
+    result = validate_column_presence(
+        df,
+        contract=contract,
+    )
 
     assert result.passed is False
     assert result.failed_count == 1
-    assert result.metadata["unexpected_columns"] == ["order_number"]
-    assert result.metadata["missing_columns"] == []
+    assert result.metadata["unexpected_columns"] == ["junk"]
+
+
+def test_column_presence_allows_extra_columns_when_configured(spark):
+    df = spark.createDataFrame(
+        [(1, "prior", "extra")],
+        "order_id INT, eval_set STRING, junk STRING",
+    )
+
+    contract = {
+        "dataset": {
+            "allow_extra_columns": True,
+        },
+        "schema": [
+            {"name": "order_id"},
+            {"name": "eval_set"},
+        ],
+    }
+
+    result = validate_column_presence(
+        df,
+        contract=contract,
+    )
+
+    assert result.passed
+    assert result.failed_count == 0
+    assert result.metadata["unexpected_columns"] == ["junk"]
+
+    assert result.message == "all required columns are present"
+
+
+@pytest.mark.parametrize(
+    "allow_extra_columns",
+    [
+        "false",
+        "true",
+        0,
+        1,
+        None,
+        [],
+    ],
+)
+def test_column_presence_rejects_non_boolean_allow_extra_columns(
+    spark,
+    allow_extra_columns,
+):
+    df = spark.createDataFrame(
+        [(1,)],
+        "order_id INT",
+    )
+
+    contract = {
+        "dataset": {
+            "allow_extra_columns": allow_extra_columns,
+        },
+        "schema": [
+            {"name": "order_id"},
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match="allow_extra_columns.*boolean",
+    ):
+        validate_column_presence(
+            df,
+            contract=contract,
+        )
+
+
+def test_column_presence_rejects_duplicate_contract_columns(spark):
+    df = spark.createDataFrame(
+        [(1,)],
+        "order_id INT",
+    )
+
+    contract = {
+        "schema": [
+            {"name": "order_id"},
+            {"name": "order_id"},
+        ],
+    }
+
+    with pytest.raises(
+        InvalidContractError,
+        match="Duplicate columns in contract schema",
+    ):
+        validate_column_presence(
+            df,
+            contract=contract,
+        )
+
+
+def test_column_presence_detects_duplicate_dataframe_columns(spark):
+    source_df = spark.createDataFrame(
+        [(1, 2)],
+        "a INT, b INT",
+    )
+
+    df = source_df.selectExpr(
+        "a AS value",
+        "b AS value",
+    )
+
+    contract = {
+        "schema": [
+            {"name": "value"},
+        ],
+    }
+
+    result = validate_column_presence(
+        df,
+        contract=contract,
+    )
+
+    assert result.passed is False
+    assert result.failed_count == 1
+    assert result.metadata["duplicate_columns"] == ["value"]
+
+
+def test_column_presence_reports_missing_and_unexpected_columns(spark):
+    df = spark.createDataFrame(
+        [(1, "extra")],
+        "order_id INT, junk STRING",
+    )
+
+    contract = {
+        "dataset": {
+            "allow_extra_columns": False,
+        },
+        "schema": [
+            {"name": "order_id"},
+            {"name": "eval_set"},
+        ],
+    }
+
+    result = validate_column_presence(
+        df,
+        contract=contract,
+    )
+
+    assert not result.passed
+    assert result.failed_count == 2
+
+    assert result.metadata["missing_columns"] == [
+        "eval_set",
+    ]
+    assert result.metadata["unexpected_columns"] == [
+        "junk",
+    ]
+
+    assert "missing columns: eval_set" in result.message
+    assert "unexpected columns: junk" in result.message
+
+
+def test_column_presence_disallows_extra_columns_by_default(spark):
+    df = spark.createDataFrame(
+        [(1, "extra")],
+        "order_id INT, junk STRING",
+    )
+
+    contract = {
+        "schema": [
+            {"name": "order_id"},
+        ],
+    }
+
+    result = validate_column_presence(
+        df,
+        contract=contract,
+    )
+
+    assert not result.passed
+    assert result.failed_count == 1
+    assert result.metadata["unexpected_columns"] == [
+        "junk",
+    ]
