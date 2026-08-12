@@ -66,17 +66,15 @@ def validate_column_presence(
         + (0 if allow_extra_columns else len(unexpected_columns))
     )
 
+    missing_columns_str = ", ".join(missing_columns) or "none"
     unexpected_columns_str = ", ".join(unexpected_columns) or "none"
+
     if allow_extra_columns and unexpected_columns:
-        unexpected_message = f"{unexpected_columns_str} (ignored)"
-    else:
-        unexpected_message = unexpected_columns_str
+        unexpected_columns_str += " (ignored)"
 
     message = (
-        "all required columns are present"
-        if passed
-        else f"missing columns: {', '.join(missing_columns) or 'none'}; "
-        f"unexpected columns: {unexpected_message}"
+        f"missing columns: {missing_columns_str}; "
+        f"unexpected columns: {unexpected_columns_str}"
     )
 
     return ValidationResult(

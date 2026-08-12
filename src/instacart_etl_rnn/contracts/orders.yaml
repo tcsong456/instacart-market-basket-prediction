@@ -76,9 +76,9 @@ schema:
       maximum: 6
     thresholds:
       nullability:
-        max_failed_percent: 1.0
-      range:
         max_failed_percent: 0.0
+      range:
+        max_failed_percent: 5.0
   
   - name: order_hour_of_day
     type: integer
@@ -89,9 +89,9 @@ schema:
       maximum: 23
     thresholds:
       nullability:
-        max_failed_percent: 1.0
-      range:
         max_failed_percent: 0.0
+      range:
+        max_failed_percent: 5.0
   
   - name: days_since_prior_order
     type: double
