@@ -60,8 +60,7 @@ def test_column_presence_detects_missing_columns(spark):
         "user_id",
     ]
 
-    assert "eval_set" in result.message
-    assert "user_id" in result.message
+    assert "missing columns: eval_set, user_id" in result.message
 
 
 def test_column_presence_detects_unexpected_columns(spark):
@@ -115,7 +114,7 @@ def test_column_presence_allows_extra_columns_when_configured(spark):
     assert result.failed_count == 0
     assert result.metadata["unexpected_columns"] == ["junk"]
 
-    assert result.message == "all required columns are present"
+    assert result.message == "missing columns: none; unexpected columns: junk (ignored)"
 
 
 @pytest.mark.parametrize(

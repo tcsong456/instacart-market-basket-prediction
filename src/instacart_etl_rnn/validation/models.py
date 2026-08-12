@@ -40,6 +40,12 @@ class ValidationMetric:
     expression: Column
 
 
+@dataclass(frozen=True)
+class ThresholdConfig:
+    maximum_failed_percent: float
+    severity: ValidationSeverity
+
+
 @dataclass
 class ValidationReport:
     dataset_name: str
