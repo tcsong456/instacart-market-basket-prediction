@@ -178,7 +178,7 @@ def test_run_column_metrics_returns_empty_results_when_no_metrics(
 
 
 def test_run_column_metrics_empty_df_raises_error(spark, mocker):
-    df = spark.createDataFrame([])
+    df = spark.createDataFrame([], "value INT")
 
     mocker.patch(
         "instacart_etl_rnn.validation.dataset._build_column_metrics",

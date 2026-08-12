@@ -164,7 +164,7 @@ def test_evaluate_metric_returns_warning_when_failure_equals_threshold(
     assert result.passed is True
 
 
-def test_get_metric_threshold_receives_right_argumens_inside_evaluate_metric(mocker):
+def test_get_metric_threshold_receives_right_arguments_inside_evaluate_metric(mocker):
     mocked_threshold = mocker.patch(
         "instacart_etl_rnn.validation.dataset._get_metric_threshold",
         return_value=ThresholdConfig(
@@ -173,7 +173,11 @@ def test_get_metric_threshold_receives_right_argumens_inside_evaluate_metric(moc
         ),
     )
 
-    metric = mocker.sentinel.metric
+    metric = mocker.Mock()
+    metric.rule_name = "order_id.unique"
+    metric.validation_type = "uniqueness"
+    metric.columns = ("order_id",)
+
     contract = mocker.sentinel.contract
 
     _evaluate_metric(

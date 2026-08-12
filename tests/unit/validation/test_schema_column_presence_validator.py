@@ -60,8 +60,7 @@ def test_column_presence_detects_missing_columns(spark):
         "user_id",
     ]
 
-    assert "missing columns: eval_set" in result.message
-    assert "missing columns: user_id" in result.message
+    assert "missing columns: eval_set, user_id" in result.message
 
 
 def test_column_presence_detects_unexpected_columns(spark):
