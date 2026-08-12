@@ -1,4 +1,3 @@
-
 from instacart_etl_rnn.validation.dataset import _evaluate_metric
 from instacart_etl_rnn.validation.models import (
     ThresholdConfig,
