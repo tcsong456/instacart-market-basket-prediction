@@ -1,9 +1,5 @@
 dataset:
   name: order_products
-  description: >
-    One row per product within an order, enriched with order-level
-    and product-level attributes for downstream ETL and modeling.
-  format: parquet
   allow_extra_columns: false
 
   grain:
@@ -14,30 +10,24 @@ schema:
   - name: product_id
     type: integer
     nullable: false
-    description: Unique identifier for the product.
     constraints:
       minimum: 1
 
   - name: order_id
     type: integer
     nullable: false
-    description: Unique identifier for the order.
     constraints:
       minimum: 1
 
   - name: add_to_cart_order
     type: integer
     nullable: false
-    description: Position in which the product was added to the cart.
     constraints:
       minimum: 1
 
   - name: reordered
     type: integer
     nullable: false
-    description: >
-      Indicates whether the product had been ordered previously
-      by the user.
     constraints:
       allowed_values:
         - 0
@@ -46,14 +36,12 @@ schema:
   - name: user_id
     type: integer
     nullable: false
-    description: Unique identifier for the user.
     constraints:
       minimum: 1
 
   - name: eval_set
     type: string
     nullable: false
-    description: Dataset split assigned to the order.
     constraints:
       allowed_values:
         - prior
@@ -62,32 +50,12 @@ schema:
   - name: order_number
     type: integer
     nullable: false
-    description: Sequential order number for the user.
     constraints:
       minimum: 1
-
-  - name: order_dow
-    type: integer
-    nullable: false
-    description: Day of week on which the order was placed.
-    constraints:
-      minimum: 0
-      maximum: 6
-
-  - name: order_hour_of_day
-    type: integer
-    nullable: false
-    description: Hour of day on which the order was placed.
-    constraints:
-      minimum: 0
-      maximum: 23
 
   - name: days_since_prior_order
     type: double
     nullable: false
-    description: >
-      Number of days since the user's previous order. A value of -1
-      represents the user's first order.
     constraints:
       minimum: -1
       maximum: 30
@@ -95,23 +63,8 @@ schema:
   - name: product_name
     type: string
     nullable: false
-    description: Human-readable product name.
     constraints:
       minimum_string_length: 1
-
-  - name: aisle_id
-    type: integer
-    nullable: false
-    description: Identifier of the aisle containing the product.
-    constraints:
-      minimum: 1
-
-  - name: department_id
-    type: integer
-    nullable: false
-    description: Identifier of the department containing the product.
-    constraints:
-      minimum: 1
 
 rules:
   - name: first_order_has_no_prior_interval

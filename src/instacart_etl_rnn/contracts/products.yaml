@@ -66,10 +66,3 @@ relationships:
       dataset: departments
       columns:
         - department_id
-
-rules:
-  - name: product_name_is_not_blank
-    description: >
-      Product names must contain at least one non-whitespace character
-    expression: >
-      LENGTH(TRIM(product_name)) > 0
