@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -231,7 +232,7 @@ def apply_thresholds_contract():
     }
 
 
-CONTRACT_PATH = Path(__file__).parent / "integration" / "contracts" / "orders_test.yaml"
+CONTRACT_PATH = Path(__file__).parent / "integration" / "contracts" / "orders.yaml"
 
 
 @pytest.fixture
@@ -355,3 +356,22 @@ def user_data_schema():
             ),
         ]
     )
+
+
+@pytest.fixture
+def preserve_root_logger():
+    root_logger = logging.getLogger()
+
+    original_handlers = root_logger.handlers.copy()
+    original_level = root_logger.level
+
+    yield root_logger
+
+    # Close handlers created by the test.
+    for handler in root_logger.handlers:
+        if handler not in original_handlers:
+            handler.close()
+
+    root_logger.handlers.clear()
+    root_logger.handlers.extend(original_handlers)
+    root_logger.setLevel(original_level)

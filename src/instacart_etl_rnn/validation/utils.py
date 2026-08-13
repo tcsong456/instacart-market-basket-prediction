@@ -14,10 +14,6 @@ def is_non_negative_integer(value: object) -> bool:
     return isinstance(value, Integral) and not isinstance(value, bool) and value >= 0
 
 
-def is_positive_integer(value: object) -> bool:
-    return isinstance(value, Integral) and not isinstance(value, bool) and value > 0
-
-
 def is_non_empty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
