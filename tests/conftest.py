@@ -239,6 +239,11 @@ def validate_dataset_orders_contract():
 
 
 @pytest.fixture
+def order_products_silver_contract():
+    return Path(__file__).parent / "integration" / "contracts"
+
+
+@pytest.fixture
 def validate_dataset_orders_schema():
     return StructType(
         [

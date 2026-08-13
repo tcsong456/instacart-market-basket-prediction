@@ -11,7 +11,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-path", required=True)
     parser.add_argument("--contract-path", required=True)
     parser.add_argument("--output-path", required=True)
-    parser.add_argument("--validation", action="store_true")
     return parser.parse_args()
 
 
@@ -29,10 +28,9 @@ def main() -> None:
             input_path=args.input_path,
             contract_path=args.contract_path,
             output_path=args.output_path,
-            validation=args.validation,
         )
     except Exception:
-        logger.exception("Building order_proudcts dataset failed")
+        logger.exception("Building order_products dataset failed")
         raise
     finally:
         spark.stop()

@@ -10,91 +10,52 @@ from instacart_etl_rnn.validation.loader import load_contract
 logger = logging.getLogger(__name__)
 
 
-def read_input_datasets(
-    spark: SparkSession, input_path: str, contract_path: str, validation: bool = True
-) -> dict[str, DataFrame]:
-    """Read and optionally validate datasets required to build order_products.
+DATASETS = [
+    "products",
+    "orders",
+    "order_products__prior",
+    "order_products__train",
+]
 
-    Reads the products, orders, order_products__prior, and
-    order_products__train Parquet datasets from the input path.
 
-    When validation is enabled, each dataset's contract is loaded and any
-    reference datasets required by relationship constraints are read before
-    validating the dataset.
-
-    Args:
-        spark: Active Spark session.
-        input_path: Base path containing the input Parquet datasets.
-        contract_path: Base path containing the dataset contract files.
-        validation: Whether to validate each dataset against its contract.
-            Defaults to True.
-
-    Returns:
-        A mapping from dataset name to its loaded Spark DataFrame.
-    """
-
-    DATASET_CONTRACTS_MAPPING = {
-        "products": "products.yaml",
-        "orders": "orders.yaml",
-        "order_products__prior": "order_products.yaml",
-        "order_products__train": "order_products.yaml",
-    }
-
+def read_input_datasets(spark: SparkSession, input_path: str) -> dict[str, DataFrame]:
     datasets_mapping = {}
-    for dataset_name, contract_name in DATASET_CONTRACTS_MAPPING.items():
+    for dataset_name in DATASETS:
         logger.info(
-            ("reading bronze parquet dataset %s for building order_proudcts"),
+            ("reading bronze parquet dataset %s for building order_products"),
             dataset_name,
         )
 
         df = read_parquet(join_path(input_path, dataset_name), spark)
-        datasets_mapping.update({dataset_name: df})
-
-        if not validation:
-            continue
-
-        contract = load_contract(join_path(contract_path, contract_name))
-        ref_dataset = {}
-        if "relationships" in contract:
-            for relationship in contract["relationships"]:
-                parent_df_name = relationship.get("parent", {}).get("dataset")
-                parent_df = read_parquet(join_path(input_path, parent_df_name), spark)
-
-                ref_dataset.update({parent_df_name: parent_df})
-
-        validate_dataset(df, contract=contract, reference_datasets=ref_dataset)
+        datasets_mapping[dataset_name] = df
 
     return datasets_mapping
 
 
 def build_order_products(
-    spark: SparkSession,
-    input_path: str,
-    contract_path: str,
-    output_path: str,
-    validation: bool = True,
+    spark: SparkSession, input_path: str, output_path: str, contract_path: str
 ) -> None:
-    """Build and write the order_products dataset.
+    """Build, validate, and write the silver order_products dataset.
 
-    Reads the required input datasets, optionally validates them, combines
-    prior and training order-product records, and enriches them with order
-    and product information. Missing days_since_prior_order values are
-    replaced with -1 before the resulting dataset is written to Parquet.
+    Reads the required bronze datasets, combines the prior and train
+    order-product records, and enriches them with order and product
+    attributes. Missing days_since_prior_order values are replaced with
+    -1 before the resulting dataset is validated against its silver-layer
+    contract and written as Parquet.
 
     Args:
         spark: Active Spark session.
-        input_path: Base path containing the input Parquet datasets.
-        contract_path: Base path containing the dataset contract files.
-        output_path: Path where the resulting order_products dataset is written.
-        validation: Whether to validate input datasets before processing.
-            Defaults to True.
+        input_path: Base path containing the bronze input datasets.
+        output_path: Path where the silver order_products dataset is written.
+        contract_path: Base path containing the dataset contracts.
+
+    Returns:
+        None.
     """
 
     df_dicts = read_input_datasets(
         spark=spark,
         input_path=input_path,
-        contract_path=contract_path,
-        validation=validation,
     )
 
     orders_prior, orders_train = (
@@ -110,5 +71,8 @@ def build_order_products(
         products, how="left", on=["product_id"]
     )
     order_products = order_products.fillna({"days_since_prior_order": -1})
+
+    contract = load_contract(join_path(contract_path, "order_products_silver.yaml"))
+    validate_dataset(order_products, contract=contract)
 
     write_parquet(path=output_path, df=order_products)
