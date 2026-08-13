@@ -1,0 +1,105 @@
+dataset:
+  name: user_data
+  grain:
+    - user_id
+  allow_extra_columns: false
+
+schema:
+  - name: user_id
+    type: integer
+    nullable: false
+    constraints:
+      unique: true
+      minimum: 1
+
+  - name: eval_set
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - train
+        - test
+
+  - name: order_numbers_array
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 1
+
+  - name: order_dows_array
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 1
+
+  - name: order_hours_array
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 1
+
+  - name: days_since_prior_orders_array
+    type: array<double>
+    nullable: false
+    constraints:
+      minimum_array_length: 1
+
+  - name: reorder_orders
+    type: array<string>
+    nullable: false
+    constraints:
+      minimum_array_length: 1
+
+rules:
+  - name: order_numbers_are_contiguous
+    expression: >
+      aggregate(
+        sequence(1, size(order_numbers_array)),
+        true,
+        (acc, x) ->
+          acc AND
+          element_at(order_numbers_array, x) = x
+      )
+
+  - name: order_dows_are_valid
+    expression: >
+      forall(
+        order_dows_array,
+        x -> x >= 0 AND x <= 6
+      )
+
+  - name: order_hours_are_valid
+    expression: >
+      forall(
+        order_hours_array,
+        x -> x >= 0 AND x <= 23
+      )
+
+  - name: first_order_has_no_prior_interval
+    expression: >
+      element_at(
+        days_since_prior_orders_array,
+        1
+      ) IS NULL
+
+  - name: reorder_values_are_binary
+    expression: >
+      forall(
+        reorder_orders,
+        order_values ->
+          forall(
+            split(order_values, '_'),
+            x -> x IN ('0', '1')
+          )
+      )
+
+  - name: order_level_arrays_have_equal_length
+    expression: >
+      size(order_numbers_array) =
+      size(order_dows_array)
+      AND size(order_numbers_array) =
+      size(order_hours_array)
+      AND size(order_numbers_array) =
+      size(days_since_prior_orders_array)
+      AND size(order_numbers_array) =
+      size(reorder_orders)
