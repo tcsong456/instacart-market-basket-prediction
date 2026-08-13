@@ -1,0 +1,245 @@
+dataset:
+  name: user_data
+  description: >
+    One row per user containing ordered historical order-level sequences
+    and basket-level product information for downstream modeling.
+  format: parquet
+  allow_extra_columns: false
+  grain:
+    - user_id
+
+schema:
+  - name: user_id
+    type: integer
+    nullable: false
+    description: Unique identifier for the user.
+    constraints:
+      unique: true
+      minimum: 1
+
+  - name: order_ids
+    type: string
+    nullable: false
+    description: >
+      Space-separated order identifiers ordered by order_number.
+
+  - name: order_numbers
+    type: string
+    nullable: false
+    description: >
+      Space-separated sequential order numbers for the user.
+
+  - name: order_dows
+    type: string
+    nullable: false
+    description: >
+      Space-separated day-of-week values corresponding to each order.
+
+  - name: order_hours
+    type: string
+    nullable: false
+    description: >
+      Space-separated order-hour values corresponding to each order.
+
+  - name: days_since_prior_orders
+    type: string
+    nullable: false
+    description: >
+      Space-separated days-since-prior-order values. The first order
+      uses -1 as the sentinel value.
+
+  - name: product_ids
+    type: string
+    nullable: false
+    description: >
+      Space-separated orders where product ids within each order are
+      underscore-separated.
+
+  - name: reorders
+    type: string
+    nullable: false
+    description: >
+      Space-separated orders where reorder indicators within each order
+      are underscore-separated.
+
+  - name: department_ids
+    type: string
+    nullable: false
+    description: >
+      Space-separated orders where department ids within each order
+      are underscore-separated.
+
+  - name: aisle_ids
+    type: string
+    nullable: false
+    description: >
+      Space-separated orders where aisle ids within each order
+      are underscore-separated.
+
+  - name: eval_set
+    type: string
+    nullable: false
+    description: Evaluation split of the user's final order.
+    constraints:
+      allowed_values:
+        - train
+        - test
+
+derived_fields:
+  - name: order_ids_length
+    expression: size(split(order_ids, ' '))
+  
+  - name: order_numbers_length
+    expression: size(split(order_numbers, ' '))
+
+  - name: order_dows_length
+    expression: size(split(order_dows, ' '))
+  
+  - name: order_hours_length
+    expression: size(split(order_hours, ' '))
+  
+  - name: days_since_prior_orders_length
+    expression: size(split(days_since_prior_orders, ' '))
+  
+  - name: product_ids_length
+    expression: size(split(product_ids, ' '))
+  
+  - name: reorders_length
+    expression: size(split(reorders, ' '))
+  
+  - name: department_ids_length
+    expression: size(split(department_ids, ' '))
+  
+  - name: aisle_ids_length
+    expression: size(split(aisle_ids, ' '))
+  
+  - name: order_numbers_array
+    expression: >
+      transform(
+        split(order_numbers, ' '),
+        x -> cast(x as int)
+      )
+  
+  - name: order_dows_array
+    expression: >
+      transform(
+        split(order_dows, ' '),
+        x -> cast(x as int)
+      )
+  
+  - name: order_hours_array
+    expression: >
+      transform(
+        split(order_hours, ' '),
+        x -> cast(x as int)
+      )
+
+  - name: days_since_prior_orders_array
+    expression: >
+      transform(
+        split(days_since_prior_orders, ' '),
+        x -> cast(x as double)
+      )
+  
+  - name: product_orders
+    expression: "split(product_ids, ' ')"
+
+  - name: reorder_orders
+    expression: "split(reorders, ' ')"
+
+  - name: department_orders
+    expression: "split(department_ids, ' ')"
+
+  - name: aisle_orders
+    expression: "split(aisle_ids, ' ')"
+
+rules:
+  - name: all_order_level_sequences_have_same_length
+    description: >
+      Every order-level sequence must contain the same number of orders.
+    expression: >
+      order_ids_length = order_numbers_length
+      AND order_ids_length = order_dows_length
+      AND order_ids_length = order_hours_length
+      AND order_ids_length = days_since_prior_orders_length
+      AND order_ids_length = product_ids_length
+      AND order_ids_length = reorders_length
+      AND order_ids_length = department_ids_length
+      AND order_ids_length = aisle_ids_length
+  
+  - name: user_has_at_least_one_order
+    description: >
+      Each user must contain at least one order.
+    expression: >
+      order_ids_length >= 1
+  
+  - name: order_numbers_start_at_one
+    description: >
+      The first order number for every user must be 1.
+    expression: >
+      element_at(order_numbers_array, 1) = 1
+  
+  - name: order_numbers_are_contiguous
+    description: >
+      Order numbers must be the contiguous sequence 1 through the
+      number of orders for the user.
+    expression: >
+      order_numbers_array =
+      sequence(1, size(order_numbers_array))
+  
+  - name: order_dows_are_valid
+    description: >
+      Every order day-of-week value must be between 0 and 6.
+    expression: >
+      forall(
+        order_dows_array,
+        x -> x >= 0 AND x <= 6
+      )
+  
+  - name: order_hours_are_valid
+    description: >
+      Every order hour must be between 0 and 23.
+    expression: >
+      forall(
+        order_hours_array,
+        x -> x >=0 AND x <= 23
+      )
+  
+  - name: first_order_has_no_prior_interval
+    description: >
+      The first order must use -1 for days_since_prior_order.
+    expression: >
+      element_at(days_since_prior_orders_array, 1) = -1.0
+  
+  - name: basket_sequences_have_matching_lengths
+    description: >
+      Within each order, product, reorder, department, and aisle
+      sequences must contain the same number of items.
+    expression: >
+      aggregate(
+        sequence(1, size(product_orders)),
+        true,
+        (acc, i) ->
+          acc
+          AND size(split(element_at(product_orders, i), '_'))
+              = size(split(element_at(reorder_orders, i), '_'))
+          AND size(split(element_at(product_orders, i), '_'))
+              = size(split(element_at(department_orders, i), '_'))
+          AND size(split(element_at(product_orders, i), '_'))
+              = size(split(element_at(aisle_orders, i), '_'))
+      )
+  
+  - name: reorder_values_are_binary
+    description: >
+      Every reorder indicator must be either 0 or 1.
+    expression: >
+      forall(
+        reorder_orders,
+        x ->
+          forall(
+            split(x, '_'),
+            y -> y IN ('0', '1')
+          )
+      )
+
+

@@ -2,12 +2,14 @@ import logging
 
 from pyspark.sql import SparkSession
 
-from instacart_etl_rnn.common.io import write_parquet
+from instacart_etl_rnn.common.io import read_parquet, write_parquet
+from instacart_etl_rnn.common.paths import join_path
 from instacart_etl_rnn.silver.create_user_data import (
     build_order_level_data,
     build_user_level_data,
-    read_input_datasets,
 )
+from instacart_etl_rnn.validation.dataset import validate_dataset
+from instacart_etl_rnn.validation.loader import load_contract
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +21,9 @@ def run_user_data_job(
 ) -> None:
     logger.info("Reading silver order_products dataset")
 
-    order_products = read_input_datasets(
-        spark=spark, input_path=path, contract_path=contract_path
-    )
+    order_products = read_parquet(join_path(path, "order_products"), spark)
 
-    logger.info("Builing order level data")
+    logger.info("Building order level data")
 
     order_group_data = build_order_level_data(order_products)
 
@@ -31,6 +31,9 @@ def run_user_data_job(
 
     user_data = build_user_level_data(order_group_data)
 
+    contract = load_contract(join_path(contract_path, "user_data.yaml"))
+    validate_dataset(user_data, contract=contract)
+
     logger.info(f"Writing user data to {path}")
 
-    write_parquet(f"{path}/user_data", user_data)
+    write_parquet(join_path(path, "user_data"), user_data)

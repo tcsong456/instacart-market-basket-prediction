@@ -1,37 +1,5 @@
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-
-from instacart_etl_rnn.common.io import read_parquet
-from instacart_etl_rnn.common.paths import join_path
-from instacart_etl_rnn.validation.dataset import validate_dataset
-from instacart_etl_rnn.validation.loader import load_contract
-
-
-def read_input_datasets(
-    spark: SparkSession, input_path: str, contract_path: str
-) -> DataFrame:
-    """Read and validate the silver order_products dataset.
-
-    Reads the order_products Parquet dataset from the input path, loads its
-    silver-layer data contract, validates the dataset against that contract,
-    and returns the validated DataFrame.
-
-    Args:
-        spark: Active Spark session.
-        input_path: Base path containing the input Parquet dataset.
-        contract_path: Base path containing the dataset contract file.
-
-    Returns:
-        The validated order_products Spark DataFrame.
-    """
-
-    order_products = read_parquet(join_path(input_path, "order_products"), spark)
-
-    contract = load_contract(join_path(contract_path, "order_products_silver.yaml"))
-
-    validate_dataset(order_products, contract=contract)
-
-    return order_products
 
 
 def build_order_level_data(df: DataFrame) -> DataFrame:
@@ -163,6 +131,19 @@ def build_user_level_data(df: DataFrame) -> DataFrame:
             "eval_set", F.expr("element_at(transform(orders, x -> x.eval_set), -1)")
         )
         .drop("orders")
+    )
+
+    df = df.withColumn(
+        "eval_set",
+        F.when(
+            F.col("eval_set") == "prior",
+            "test",
+        )
+        .when(
+            F.col("eval_set") == "train",
+            "train",
+        )
+        .otherwise(F.col("eval_set")),
     )
 
     return df

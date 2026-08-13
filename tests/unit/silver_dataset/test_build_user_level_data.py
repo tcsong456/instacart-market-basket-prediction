@@ -54,7 +54,7 @@ def test_build_user_level_data_builds_order_sequences(spark):
                 "0_1_0",
                 "8_15_11",
                 "5_1_17",
-                "test",
+                "prior",
             ),
         ],
         [
