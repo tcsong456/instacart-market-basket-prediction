@@ -1,6 +1,8 @@
 from unittest.mock import call
 
 import pytest
+from pyspark import StorageLevel
+from pyspark.sql import DataFrame
 
 from instacart_etl_rnn.jobs.create_user_data_job import run_user_data_job
 from instacart_etl_rnn.validation.exceptions import DataValidationError
@@ -10,7 +12,7 @@ from instacart_etl_rnn.validation.models import ValidationReport
 def test_run_user_data_job(mocker):
     order_products = mocker.sentinel.order_products
     order_group_data = mocker.sentinel.order_group_data
-    user_data = mocker.sentinel.user_data
+    user_data = user_data = mocker.Mock(spec=DataFrame)
     contract = mocker.sentinel.contract
     spark = mocker.sentinel.spark
 
@@ -69,6 +71,7 @@ def test_run_user_data_job(mocker):
         call.join("silver", "user_data"),
         call.write("silver/user_data", user_data),
     ]
+    user_data.persist.assert_called_once_with(StorageLevel.MEMORY_AND_DISK)
 
 
 def test_run_user_data_job_does_not_write_when_user_build_fails(
@@ -133,7 +136,7 @@ def test_run_user_data_job_does_not_write_when_validation_fails(
 
     order_products_df = mocker.sentinel.order_products_df
     order_group_df = mocker.sentinel.order_group_df
-    user_group_df = mocker.sentinel.user_group_df
+    user_group_df = mocker.Mock(spec=DataFrame)
     contract = mocker.sentinel.contract
 
     mocker.patch(

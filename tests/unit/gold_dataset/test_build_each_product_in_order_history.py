@@ -129,16 +129,16 @@ def test_build_each_product_in_order_history_empty_next_basket(mocker, spark):
         [
             (1, [[1, 2]], [1, 2], [], "5", "19", "16", "1"),
         ],
-        [
-            "user_id",
-            "products_all",
-            "products_set",
-            "next_products_set",
-            "order_dows",
-            "order_hours",
-            "days_since_prior_orders",
-            "order_numbers",
-        ],
+        schema="""
+            user_id INT,
+            products_all ARRAY<ARRAY<INT>>,
+            products_set ARRAY<INT>,
+            next_products_set ARRAY<INT>,
+            order_dows STRING,
+            order_hours STRING,
+            days_since_prior_orders STRING,
+            order_numbers STRING
+        """,
     )
 
     orders_df = spark.createDataFrame(
