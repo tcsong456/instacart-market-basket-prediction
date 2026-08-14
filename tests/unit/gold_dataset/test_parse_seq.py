@@ -1,4 +1,3 @@
-
 from instacart_etl_rnn.gold.create_product_history_data import parse_seq
 
 
