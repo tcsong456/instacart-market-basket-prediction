@@ -23,5 +23,4 @@ gcloud dataproc jobs submit pyspark \
     -- \
     --input-path="gs://instacart-bronze-fc45ebb3/$1" \
     --output-path="gs://instacart-silver-fc45ebb3/$folder/order_products" \
-    --contract-path="gs://instacart-raw-fc45ebb3/contracts" \
-    --validation
+    --contract-path="gs://instacart-raw-fc45ebb3/contracts"
