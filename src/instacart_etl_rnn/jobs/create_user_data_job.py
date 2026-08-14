@@ -1,5 +1,6 @@
 import logging
 
+from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 
 from instacart_etl_rnn.common.io import read_parquet, write_parquet
@@ -30,10 +31,14 @@ def run_user_data_job(
     logger.info("Building user data")
 
     user_data = build_user_level_data(order_group_data)
+    user_data.persist(StorageLevel.MEMORY_AND_DISK)
 
-    contract = load_contract(join_path(contract_path, "user_data.yaml"))
-    validate_dataset(user_data, contract=contract)
+    try:
+        contract = load_contract(join_path(contract_path, "user_data.yaml"))
+        validate_dataset(user_data, contract=contract)
 
-    logger.info(f"Writing user data to {path}")
+        logger.info(f"Writing user data to {path}")
 
-    write_parquet(join_path(path, "user_data"), user_data)
+        write_parquet(join_path(path, "user_data"), user_data)
+    finally:
+        user_data.unpersist()

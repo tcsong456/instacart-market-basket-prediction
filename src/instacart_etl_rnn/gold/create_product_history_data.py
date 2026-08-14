@@ -11,7 +11,7 @@ SELECTED_COLUMNS = [
     "aisle_id",
     "department_id",
     "product_name",
-    "eval_set",
+    "train_eval_set",
     "is_ordered_history",
     "position_in_order_history",
     "history_order_size",
@@ -30,7 +30,7 @@ def parse_seq(
     Parse an encoded sequence column into historical and next-step arrays.
 
     The input column is expected to contain space-separated sequences,
-    where each sequence contains comma-separated integer values. The
+    where each sequence contains underscore-separated integer values. The
     final sequence is treated as the next sequence and all preceding
     sequences are treated as history.
 
@@ -59,7 +59,16 @@ def parse_seq(
         df.withColumn(f"{prefix}_raw", F.split(F.col(input_col), " "))
         .withColumn(
             f"{prefix}_prev",
-            F.slice(F.col(f"{prefix}_raw"), 1, F.size(f"{prefix}_raw") - 1),
+            F.when(
+                F.size(F.col(f"{prefix}_raw")) == 1,
+                F.col(f"{prefix}_raw"),
+            ).otherwise(
+                F.slice(
+                    F.col(f"{prefix}_raw"),
+                    1,
+                    F.size(F.col(f"{prefix}_raw")) - 1,
+                )
+            ),
         )
         .withColumn(
             f"{prefix}_all",
@@ -74,14 +83,33 @@ def parse_seq(
                 """
             ),
         )
-        .withColumn(f"{prefix}_next", F.element_at(f"{prefix}_raw", -1))
+        .withColumn(
+            f"{prefix}_next",
+            F.when(
+                F.size(F.col(f"{prefix}_raw")) == 1,
+                F.array().cast("array<string>"),
+            ).otherwise(
+                F.array(
+                    F.element_at(
+                        F.col(f"{prefix}_raw"),
+                        -1,
+                    )
+                )
+            ),
+        )
         .withColumn(
             f"next_{prefix}_int",
             F.expr(
                 f"""
+                flatten(
                     transform(
-                        split({prefix}_next, '_'), x -> cast(x as int)
+                        {prefix}_next,
+                        x -> transform(
+                            split(x, '_'),
+                            y -> cast(y as int)
+                        )
                     )
+                )
                 """
             ),
         )
@@ -113,7 +141,7 @@ def build_each_product_in_order_history(
 
     df = (
         df.withColumn(
-            "order_size_history",
+            "history_order_size",
             F.expr(
                 """
                     array_join(
@@ -124,7 +152,7 @@ def build_each_product_in_order_history(
             ),
         )
         .withColumn(
-            "reorder_size_history",
+            "history_reorder_size",
             F.expr(
                 """
                     array_join(
@@ -175,7 +203,7 @@ def build_each_product_in_order_history(
             ),
         )
         .withColumn(
-            "pos_in_order_history",
+            "position_in_order_history",
             F.expr(
                 """
                     array_join(
@@ -269,25 +297,4 @@ def build_each_reorder_history(df: DataFrame, orders: DataFrame):
         )
     )
 
-    return df
-
-
-if __name__ == "__main__":
-    from instacart_etl_rnn.common.io import read_parquet
-    from instacart_etl_rnn.common.spark import create_spark_session
-
-    spark = create_spark_session("product")
-    df = read_parquet("data/gcs/user_data", spark)
-    df = parse_seq(df, "reorders", "reorders", False)
-
-    orders = filtered_orders("data/gcs", spark)
-    # df = build_each_product_in_order_history("", df, orders, spark)
-    df = build_each_reorder_history(df, orders)
-    df.select(
-        "label",
-        "is_ordered_history",
-        "position_in_order_history",
-        "history_order_size",
-        "history_reorder_size",
-        "train_eval_set",
-    ).show()
+    return df.select(SELECTED_COLUMNS)
