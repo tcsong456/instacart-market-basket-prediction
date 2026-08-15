@@ -4,7 +4,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 from pyspark.sql.types import (
-    ArrayType,
     DoubleType,
     IntegerType,
     StringType,
@@ -246,10 +245,8 @@ def order_products_silver_contract():
 
 
 @pytest.fixture
-def user_data_contract():
-    return load_contract(
-        Path(__file__).parent / "integration" / "contracts" / "user_data.yaml"
-    )
+def user_data_contract_path():
+    return Path(__file__).parent / "integration" / "contracts"
 
 
 @pytest.fixture
@@ -320,41 +317,6 @@ def validate_dataset_users_df(spark, validate_dataset_users_schema):
             (2,),
         ],
         schema=validate_dataset_users_schema,
-    )
-
-
-@pytest.fixture
-def user_data_schema():
-    return StructType(
-        [
-            StructField("user_id", IntegerType(), False),
-            StructField("eval_set", StringType(), False),
-            StructField(
-                "order_numbers_array",
-                ArrayType(IntegerType()),
-                False,
-            ),
-            StructField(
-                "order_dows_array",
-                ArrayType(IntegerType()),
-                False,
-            ),
-            StructField(
-                "order_hours_array",
-                ArrayType(IntegerType()),
-                False,
-            ),
-            StructField(
-                "days_since_prior_orders_array",
-                ArrayType(DoubleType()),
-                False,
-            ),
-            StructField(
-                "reorder_orders",
-                ArrayType(StringType()),
-                False,
-            ),
-        ]
     )
 
 
