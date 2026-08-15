@@ -1,0 +1,289 @@
+dataset:
+  name: product_history_data
+  description: >
+    One row per user-product candidate, containing the user's historical
+    ordering behaviour for the product together with order-level history
+    used for next-order prediction.
+
+  grain:
+    - user_id
+    - product_id
+
+  allow_extra_columns: false
+
+schema:
+  - name: user_id
+    type: integer
+    nullable: false
+    description: Unique identifier for the user
+    constraints:
+      minimum: 1
+
+  - name: product_id
+    type: integer
+    nullable: false
+    description: Unique identifier for the product
+    constraints:
+      minimum: 0
+  
+  - name: label
+    type: integer
+    nullable: false
+    description: >
+      Target indicating whether the product is ordered in the next order.
+      Test rows use -1 because the target is unknown.
+    constraints:
+      allowed_values:
+        - -1
+        - 0
+        - 1
+
+  - name: aisle_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 0
+
+  - name: department_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 0
+
+  - name: product_name
+    type: string
+    nullable: false
+
+  - name: train_eval_set
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - train
+        - test
+  
+  - name: is_ordered_history
+    type: string
+    nullable: false
+    description: >
+      Space-separated binary sequence indicating whether this product
+      appeared in each historical order.
+    constraints:
+      pattern: "^[01]( [01])*$"
+
+  - name: position_in_order_history
+    type: string
+    nullable: false
+    description: >
+      Space-separated product position in each historical order.
+      Zero indicates the product was not ordered.
+    constraints:
+      pattern: "^[0-9]+( [0-9]+)*$"
+
+  - name: history_order_size
+    type: string
+    nullable: false
+    description: >
+      Space-separated sequence containing the number of products
+      in each historical order.
+    constraints:
+      pattern: "^[0-9]+( [0-9]+)*$"
+
+  - name: history_reorder_size
+    type: string
+    nullable: false
+    description: >
+      Space-separated sequence containing the number of reordered
+      products in each historical order.
+    constraints:
+      pattern: "^[0-9]+( [0-9]+)*$"
+  
+  - name: order_dows
+    type: string
+    nullable: false
+    description: >
+      Space-separated day-of-week values for historical orders.
+    constraints:
+      pattern: "^[0-6]( [0-6])*$"
+
+  - name: order_hours
+    type: string
+    nullable: false
+    description: >
+      Space-separated hour-of-day values for historical orders.
+    constraints:
+      pattern: "^([0-9]|1[0-9]|2[0-3])( ([0-9]|1[0-9]|2[0-3]))*$"
+
+  - name: days_since_prior_orders
+    type: string
+    nullable: false
+    description: >
+      Space-separated intervals between historical orders.
+      -1 represents the first order where no prior interval exists.
+
+  - name: order_numbers
+    type: string
+    nullable: false
+    description: >
+      Space-separated historical order numbers.
+    constraints:
+      pattern: "^[1-9][0-9]*( [1-9][0-9]*)*$"
+
+derived_fields:
+  - name: order_numbers_length
+    expression: size(split(order_numbers, ' '))
+
+  - name: order_dows_length
+    expression: size(split(order_dows, ' '))
+  
+  - name: order_hours_length
+    expression: size(split(order_hours, ' '))
+  
+  - name: days_since_prior_orders_length
+    expression: size(split(days_since_prior_orders, ' '))
+  
+  - name: ordered_history_length
+    expression: size(split(is_ordered_history, ' '))
+  
+  - name: pos_history_length
+    expression: size(split(position_in_order_history, ' '))
+  
+  - name: order_size_length
+    expression: size(split(history_order_size, ' '))
+  
+  - name: reorder_size_length
+    expression: size(split(history_reorder_size, ' '))
+  
+  - name: order_dows_array
+    expression: >
+      transform(
+        split(order_dows, ' '),
+        x -> cast(x as int)
+      )
+  
+  - name: order_hours_array
+    expression: >
+      transform(
+        split(order_hours, ' '),
+        x -> cast(x as int)
+      )
+
+  - name: days_since_prior_orders_array
+    expression: >
+      transform(
+        split(days_since_prior_orders, ' '),
+        x -> cast(x as double)
+      )
+    
+  - name: order_numbers_array
+    expression: >
+      transform(
+        split(order_numbers, ' '),
+        x -> cast(x as int)
+      )
+
+rules:
+  - name: all_historical_data_has_the_same_length
+    expression: >
+      ordered_history_length = pos_history_length
+      AND ordered_history_length = order_size_length
+      AND ordered_history_length = reorder_size_length
+  
+  - name: all_temporal_data_has_the_same_length
+    expression: >
+      order_numbers_length = order_dows_length
+      AND order_numbers_length = order_hours_length
+      AND order_numbers_length = days_since_prior_orders_length
+  
+  - name: temporal_data_has_one_more_step_than_historical_data
+    expression: >
+      order_numbers_length - ordered_history_length = 1
+  
+  - name: train_rows_have_binary_label
+    expression: >
+      train_eval_set <> 'train' OR label IN (0, 1)
+  
+  - name: test_rows_have_unknown_label
+    expression: >
+      train_eval_set <> 'test' OR label = -1
+  
+  - name: unordered_product_position_is_zero
+    expression: >
+      forall(
+          arrays_zip(
+            transform(split(is_ordered_history, ' '), x -> cast(x as int)),
+            transform(split(position_in_order_history, ' '), x -> cast(x as int))
+          ),
+          x -> x['0'] = 1 OR x['1'] = 0
+        )
+  
+  - name: ordered_product_has_positive_position
+    expression: >
+      product_id = 0
+      OR forall(
+          arrays_zip(
+            transform(split(is_ordered_history, ' '), x -> cast(x as int)),
+            transform(split(position_in_order_history, ' '), x -> cast(x as int))
+          ),
+          x -> x['0'] = 0 OR x['1'] > 0
+        )
+  
+  - name: product_position_does_not_exceed_order_size
+    expression: >
+      forall(
+        arrays_zip(
+          transform(split(position_in_order_history, ' '), x -> cast(x as int)),
+          transform(split(history_order_size, ' '), x -> cast(x as int))
+        ),
+        x -> x['0'] <= x['1']
+      )
+  
+  - name: reorder_size_does_not_exceed_order_size
+    expression: >
+      forall(
+        arrays_zip(
+          transform(split(history_reorder_size, ' '), x -> cast(x as int)),
+          transform(split(history_order_size, ' '), x -> cast(x as int))
+        ),
+        x -> x['0'] <= x['1']
+      )
+  
+  - name: order_numbers_start_at_one
+    expression: >
+      element_at(order_numbers_array, 1) = 1
+  
+  - name: order_numbers_are_contiguous
+    expression: >
+      order_numbers_array =
+      sequence(1, size(order_numbers_array))
+  
+  - name: order_dows_are_valid
+    expression: >
+      forall(
+        order_dows_array,
+        x -> x >= 0 AND x <= 6
+      )
+  
+  - name: order_hours_are_valid
+    expression: >
+      forall(
+        order_hours_array,
+        x -> x >=0 AND x <= 23
+      )
+  
+  - name: first_order_has_no_prior_interval
+    expression: >
+      element_at(days_since_prior_orders_array, 1) = -1.0
+  
+  - name: days_since_prior_orders_are_whole_numbers
+    expression: >
+      forall(
+        days_since_prior_orders_array,
+        x -> x = floor(x)
+      )
+  
+  - name: minimum_length_of_product_name_must_be_one
+    expression: >
+      product_id = 0
+      OR LENGTH(TRIM(product_name)) > 0
+  
