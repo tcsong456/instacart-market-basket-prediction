@@ -1,6 +1,7 @@
 from unittest.mock import call
 
 import pytest
+from pyspark.sql import DataFrame
 
 from instacart_etl_rnn.jobs.create_product_history_data_job import (
     run_product_history_job,
@@ -18,7 +19,7 @@ def test_run_product_history_job_calls_validation_before_write(mocker):
     reorders = mocker.sentinel.reorders
     product_history = mocker.Mock(name="product_history")
     reorder_history = mocker.sentinel.reorder_history
-    combined_history = mocker.sentinel.combined_history
+    combined_history = mocker.Mock(spec=DataFrame)
     contract = mocker.sentinel.contract
 
     mocked_join = mocker.patch(
@@ -106,7 +107,7 @@ def test_run_product_history_job_does_not_write_when_validation_fails(
     reorders = mocker.sentinel.reorders
     product_history = mocker.Mock(name="product_history")
     reorder_history = mocker.sentinel.reorder_history
-    combined_history = mocker.sentinel.combined_history
+    combined_history = mocker.Mock(spec=DataFrame)
     contract = mocker.sentinel.contract
 
     mocker.patch(
