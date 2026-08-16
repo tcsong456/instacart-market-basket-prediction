@@ -1,3 +1,4 @@
+from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 
 from instacart_etl_rnn.common.io import read_parquet, write_parquet
@@ -31,10 +32,14 @@ def run_product_history_job(
     )
     reorder_history = build_each_reorder_history(reorders, orders)
     product_include_none_history = product_history.unionByName(reorder_history)
+    product_include_none_history.persist(StorageLevel.MEMORY_AND_DISK)
 
-    contract = load_contract(join_path(contract_path, "product_history_data.yaml"))
-    validate_dataset(product_include_none_history, contract=contract)
+    try:
+        contract = load_contract(join_path(contract_path, "product_history_data.yaml"))
+        validate_dataset(product_include_none_history, contract=contract)
 
-    write_parquet(
-        join_path(output_path, "product_history_data"), product_include_none_history
-    )
+        write_parquet(
+            join_path(output_path, "product_history_data"), product_include_none_history
+        )
+    finally:
+        product_include_none_history.unpersist()
