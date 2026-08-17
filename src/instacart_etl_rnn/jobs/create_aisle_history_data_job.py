@@ -1,3 +1,4 @@
+from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 
 from instacart_etl_rnn.common.io import read_parquet, write_parquet
@@ -44,8 +45,12 @@ def run_aisle_history_job(
         how="left",
         on="aisle_id",
     ).select(SELECTED_COLUMNS)
+    aisle_history_data.persist(StorageLevel.MEMORY_AND_DISK)
 
-    contract = load_contract(join_path(contract_path, "aisle_history_data.yaml"))
-    validate_dataset(aisle_history_data, contract=contract)
+    try:
+        contract = load_contract(join_path(contract_path, "aisle_history_data.yaml"))
+        validate_dataset(aisle_history_data, contract=contract)
 
-    write_parquet(join_path(output_path, "aisle_history_data"), aisle_history_data)
+        write_parquet(join_path(output_path, "aisle_history_data"), aisle_history_data)
+    finally:
+        aisle_history_data.unpersist()
