@@ -6,6 +6,8 @@ from instacart_etl_rnn.gold.create_aisle_history_data import (
     build_aisle_history_data,
     parse_seq,
 )
+from instacart_etl_rnn.validation.dataset import validate_dataset
+from instacart_etl_rnn.validation.loader import load_contract
 
 SELECTED_COLUMNS = [
     "user_id",
@@ -24,7 +26,11 @@ SELECTED_COLUMNS = [
 
 
 def run_aisle_history_job(
-    spark: SparkSession, input_path: str, data_path: str, output_path: str
+    spark: SparkSession,
+    input_path: str,
+    data_path: str,
+    output_path: str,
+    contract_path: str,
 ) -> None:
     user_data = read_parquet(join_path(input_path, "user_data"), spark)
 
@@ -38,5 +44,8 @@ def run_aisle_history_job(
         how="left",
         on="aisle_id",
     ).select(SELECTED_COLUMNS)
+
+    contract = load_contract(join_path(contract_path, "aisle_history_data.yaml"))
+    validate_dataset(aisle_history_data, contract=contract)
 
     write_parquet(join_path(output_path, "aisle_history_data"), aisle_history_data)

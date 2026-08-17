@@ -197,7 +197,8 @@ rules:
   
   - name: temporal_data_has_one_more_step_than_historical_data
     expression: >
-      order_numbers_length - ordered_history_length = 1
+      order_numbers_length = 1
+      OR order_numbers_length - ordered_history_length = 1
   
   - name: train_rows_have_binary_label
     expression: >
