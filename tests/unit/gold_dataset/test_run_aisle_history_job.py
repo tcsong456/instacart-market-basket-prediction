@@ -161,24 +161,42 @@ def test_run_aisle_history_job_does_not_write_when_validation_fails(
                 1,
                 24,
                 "train",
+                "1 0",
+                "1 0",
+                "2 0",
+                "3 2",
+                "1 2",
+                "10 12",
+                "-1.0 5.0",
+                "1 2",
             ),
         ],
         """
-        user_id INT,
-        aisle_id INT,
-        eval_set STRING
-        """,
+            user_id INT,
+            aisle_id INT,
+            eval_set STRING,
+            is_ordered_history STRING,
+            position_in_order STRING,
+            num_products_from_aisle STRING,
+            aisle_history_size STRING,
+            order_dows STRING,
+            order_hours STRING,
+            days_since_prior_orders STRING,
+            order_numbers STRING
+            """,
     )
 
     products_df = spark.createDataFrame(
         [
             (10, 24, 4),
+            (20, 24, 4),
+            (30, 84, 16),
         ],
         """
-        product_id INT,
-        aisle_id INT,
-        department_id INT
-        """,
+            product_id INT,
+            aisle_id INT,
+            department_id INT
+            """,
     )
 
     mocker.patch(
