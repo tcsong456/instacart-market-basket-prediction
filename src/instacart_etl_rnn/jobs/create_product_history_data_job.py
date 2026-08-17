@@ -19,7 +19,7 @@ def run_product_history_job(
     data_path: str,
     output_path: str,
     contract_path: str,
-):
+) -> None:
     user_data = read_parquet(join_path(input_path, "user_data"), spark)
 
     orders = filtered_orders(data_path, spark)
