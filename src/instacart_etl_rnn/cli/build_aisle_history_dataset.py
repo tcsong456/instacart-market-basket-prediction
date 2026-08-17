@@ -11,6 +11,7 @@ def parse_args():
     parser.add_argument("--input-path", required=True)
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--output-path", required=True)
+    parser.add_argument("--contract-path", required=True)
 
     return parser.parse_args()
 
@@ -29,6 +30,7 @@ def main() -> None:
             input_path=args.input_path,
             data_path=args.data_path,
             output_path=args.output_path,
+            contract_path=args.contract_path,
         )
     except Exception:
         logger.exception("Build aisle history data failed!")
