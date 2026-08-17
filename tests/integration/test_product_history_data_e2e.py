@@ -72,7 +72,10 @@ def test_run_product_history_job_end_to_end(spark, tmp_path):
     write_parquet(str(tmp_path / "data" / "orders"), orders)
     write_parquet(str(tmp_path / "data" / "products"), products)
 
-    contract_path = Path(__file__).parent / "contracts"
+    contract_path = (
+        Path(__file__).resolve().parents[2] / "src" / "instacart_etl_rnn" / "contracts"
+    )
+
     run_product_history_job(
         spark=spark,
         input_path=tmp_path,
