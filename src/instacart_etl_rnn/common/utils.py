@@ -25,22 +25,32 @@ def parse_string_sequence(
         ValueError: If ``data_type`` is not supported.
     """
 
-    empty_array_type = {
+    empty_array_types = {
         "int": IntegerType(),
         "double": DoubleType(),
         "float": FloatType(),
         "bool": BooleanType(),
     }
-    t = empty_array_type.get(data_type)
-    if t is None:
+
+    cast_types = {
+        "int": "int",
+        "double": "double",
+        "float": "float",
+        "bool": "boolean",
+    }
+
+    element_type = empty_array_types.get(data_type)
+    cast_type = cast_types.get(data_type)
+
+    if element_type is None:
         raise ValueError(f"Data type: {data_type} is not supported!")
-    empty_array = F.array().cast(ArrayType(t))
+    empty_array = F.array().cast(ArrayType(element_type))
 
     return F.when(
         column.isNull() | (F.trim(column) == ""),
         empty_array,
     ).otherwise(
-        F.transform(F.split(F.trim(column), pattern), lambda x: x.cast(data_type))
+        F.transform(F.split(F.trim(column), pattern), lambda x: x.cast(cast_type))
     )
 
 

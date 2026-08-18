@@ -193,10 +193,13 @@ def build_product_training_data(
         product_name_seq_length.cast("int"),
     )
 
-    parsed_is_ordered_history = parse_string_sequence(F.col("is_ordered_history"))
+    df = df.withColumn(
+        "_parsed_is_ordered_history",
+        parse_string_sequence(F.col("is_ordered_history")),
+    )
 
     padded_is_ordered_history, history_length = pad_array(
-        parsed_is_ordered_history,
+        F.col("_parsed_is_ordered_history"),
         encode_length,
     )
 
