@@ -48,7 +48,12 @@ def run_product_training_data_job(
     )
 
     word_index = build_word_idx(products, min_word_freq)
+    word_index = word_index.persist(StorageLevel.MEMORY_AND_DISK)
+    word_index.count()
+
     encoded_product_name = encode_product_names(products, word_index)
+    encoded_product_name = encoded_product_name.persist(StorageLevel.MEMORY_AND_DISK)
+    encoded_product_name.count()
 
     product_training_data = build_product_training_data(
         product_history_data=product_history_data,
@@ -67,3 +72,5 @@ def run_product_training_data_job(
         )
     finally:
         product_training_data.unpersist()
+        encoded_product_name.unpersist()
+        word_index.unpersist()
