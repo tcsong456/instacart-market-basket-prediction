@@ -17,7 +17,9 @@ def test_run_product_seq_data_job_orchestrates_pipeline(
     products = mocker.sentinel.products
     product_history_data = mocker.sentinel.product_history_data
     word_index = mocker.Mock(spec=DataFrame)
+    word_index.persist.return_value = word_index
     encoded_product_name = mocker.Mock(spec=DataFrame)
+    encoded_product_name.persist.return_value = encoded_product_name
     product_training_data = mocker.Mock(spec=DataFrame)
     contract = mocker.sentinel.contract
 
