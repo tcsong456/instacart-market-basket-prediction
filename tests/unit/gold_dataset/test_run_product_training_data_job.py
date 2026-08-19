@@ -111,8 +111,8 @@ def test_run_product_training_data_job_does_not_write_when_validation_fails(
 ):
     products = mocker.sentinel.products
     product_history_data = mocker.sentinel.product_history_data
-    word_index = mocker.sentinel.word_index
-    encoded_product_name = mocker.sentinel.encoded_product_name
+    word_index = mocker.Mock(spec=DataFrame)
+    encoded_product_name = mocker.Mock(spec=DataFrame)
     training_data = mocker.Mock(spec=DataFrame)
     contract = mocker.sentinel.contract
 
