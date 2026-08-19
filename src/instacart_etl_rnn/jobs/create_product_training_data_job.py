@@ -1,3 +1,4 @@
+from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 
 from instacart_etl_rnn.common.io import read_parquet, write_parquet
@@ -49,14 +50,20 @@ def run_product_training_data_job(
     word_index = build_word_idx(products, min_word_freq)
     encoded_product_name = encode_product_names(products, word_index)
 
-    df = build_product_training_data(
+    product_training_data = build_product_training_data(
         product_history_data=product_history_data,
         encoded_product_name=encoded_product_name,
         product_name_length=product_name_length,
         encode_length=encode_length,
     )
+    product_training_data.persist(StorageLevel.MEMORY_AND_DISK)
 
-    contract = load_contract(join_path(contract_path, "product_training_data.yaml"))
-    validate_dataset(df, contract=contract)
+    try:
+        contract = load_contract(join_path(contract_path, "product_training_data.yaml"))
+        validate_dataset(product_training_data, contract=contract)
 
-    write_parquet(join_path(output_path, "product_training_data"), df)
+        write_parquet(
+            join_path(output_path, "product_training_data"), product_training_data
+        )
+    finally:
+        product_training_data.unpersist()
