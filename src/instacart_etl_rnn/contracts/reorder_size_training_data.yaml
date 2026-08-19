@@ -1,0 +1,136 @@
+dataset:
+  name: reorder_size_training_data
+  description: >
+    One row per user containing padded historical order-size,
+    reorder-size, temporal features, and a label representing
+    the number of reordered products in the next order.
+  format: parquet
+  allow_extra_columns: false
+
+  grain:
+    - user_id
+
+schema:
+  - name: user_id
+    type: integer
+    nullable: false
+    constraints:
+      unique: true
+      minimum : 1
+
+  - name: eval_set
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - train
+        - test
+
+  - name: order_sizes
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length : 100
+      maximum_array_length : 100
+
+  - name: reorder_sizes
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length : 100
+      maximum_array_length : 100
+
+  - name: label
+    type: integer
+    nullable: false
+    constraints:
+      minimum : 0
+
+  - name: order_dows
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length : 100
+      maximum_array_length : 100
+
+  - name: order_hours
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length : 100
+      maximum_array_length : 100
+
+  - name: days_since_prior_orders
+    type: array<double>
+    nullable: false
+    constraints:
+      minimum_array_length : 100
+      maximum_array_length : 100
+
+  - name: order_numbers
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length : 100
+      maximum_array_length : 100
+
+  - name: history_length
+    type: integer
+    nullable: false
+    constraints:
+      minimum : 1
+      maximum : 100
+
+rules:
+  - name: reorder_size_does_not_exceed_order_size
+    expression: >
+      forall(
+        arrays_zip(
+          order_sizes,
+          reorder_sizes
+        ),
+        x ->
+          x.reorder_sizes >= 0
+          AND x.reorder_sizes <= x.order_sizes
+      )
+  
+  - name: active_history_has_positive_order_sizes
+    expression: >
+      forall(
+        sequence(0, history_length - 1),
+        i ->
+          element_at(order_sizes, i + 1) > 0
+      )
+  
+  - name: padded_order_sizes_are_zero
+    expression: >
+      forall(
+        sequence(history_length, size(order_sizes) - 1),
+        i ->
+          element_at(order_sizes, i + 1) = 0
+      )
+
+  - name: padded_reorder_sizes_are_zero
+    expression: >
+      forall(
+        sequence(history_length, size(reorder_sizes) - 1),
+        i ->
+          element_at(reorder_sizes, i + 1) = 0
+      )
+  
+  - name: temporal_history_contains_target_order
+    expression: >
+      history_length = 100 OR size(order_numbers) = 1
+      OR element_at(order_numbers, history_length + 1) > 0
+  
+  - name: temporal_padding_after_target_order_is_zero
+    expression: >
+      history_length >= 99
+      OR forall(
+        slice(
+          order_numbers,
+          history_length + 2,
+          size(order_numbers)
+        ),
+        x -> x = 0
+      )
