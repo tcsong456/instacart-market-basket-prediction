@@ -1,0 +1,171 @@
+dataset:
+  name: product_training_data
+  description: >
+    One row per user-product pair containing encoded product information,
+    padded historical order sequences, and the prediction label used by
+    the product recommendation model.
+  format: parquet
+  allow_extra_columns: false
+
+  grain:
+    - user_id
+    - product_id
+
+schema:
+  - name: user_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: product_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 0
+
+  - name: train_eval_set
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - train
+        - test
+
+  - name: label
+    type: integer
+    nullable: false
+    constraints:
+      allowed_values:
+        - -1
+        - 0
+        - 1
+
+  - name: product_name_encoded
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 30
+      maximum_array_length: 30
+
+  - name: is_ordered_history
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: position_in_order_history
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: history_order_size
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: history_reorder_size
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: order_dows
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: order_hours
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: days_since_prior_orders
+    type: array<double>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: order_numbers
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: history_length
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: product_name_length
+    type: integer
+    nullable: false
+  
+rules:
+  - name: name_length_when_product_id_greater_than_zero
+    expression: >
+      product_id = 0
+      OR product_name_length >= 1
+  
+  - name: name_length_when_product_id_equal_to_zero
+    expression: >
+      product_id > 0
+      OR product_name_length = 0
+
+  - name: history_length_within_encoded_sequence
+    expression: >
+      history_length <= size(is_ordered_history)
+
+  - name: product_name_length_within_encoding
+    expression: >
+      product_name_length <= size(product_name_encoded)
+  
+  - name: active_history_has_positive_order_number
+    expression: >
+      forall(
+        sequence(0, size(order_numbers) - 1),
+        i ->
+          i >= history_length
+          OR element_at(order_numbers, i + 1) > 0
+      )
+
+  - name: padded_product_history_values_are_zero
+    expression: >
+      forall(
+        sequence(0, size(order_numbers) - 1),
+        i ->
+          i < history_length
+          OR (
+            element_at(is_ordered_history, i + 1) = 0
+            AND element_at(position_in_order_history, i + 1) = 0
+            AND element_at(history_order_size, i + 1) = 0
+            AND element_at(history_reorder_size, i + 1) = 0
+          )
+      )
+  
+  - name: padded_order_context_values_are_zero
+    expression: >
+      forall(
+        sequence(0, size(order_numbers) - 1),
+        i ->
+          i <= history_length
+          OR (
+            element_at(order_dows, i + 1) = 0
+            AND element_at(order_hours, i + 1) = 0
+            AND element_at(days_since_prior_orders, i + 1) = 0
+            AND element_at(order_numbers, i + 1) = 0
+          )
+      )
