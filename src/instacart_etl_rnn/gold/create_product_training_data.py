@@ -84,7 +84,7 @@ def encode_product_names(products: DataFrame, word_index: DataFrame) -> DataFram
             ),
         )
         .filter(F.col("word") != "")
-        .join(word_index, how="left", on="word")
+        .join(F.broadcast(word_index), how="left", on="word")
         .groupBy("product_id")
         .agg(
             F.array_sort(F.collect_list(F.struct("word_pos", "word_idx"))).alias(
