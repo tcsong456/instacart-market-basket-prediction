@@ -31,7 +31,7 @@ def test_main_runs_reorder_size_training_job_and_stops_spark(
 
     mocked_run_job = mocker.patch(
         "instacart_etl_rnn.cli.build_reorder_size_training_dataset."
-        "run_reorder_size_traninig_data"
+        "run_reorder_size_training_data"
     )
 
     main()
@@ -81,7 +81,7 @@ def test_main_logs_reraises_and_stops_spark_when_job_fails(
 
     mocked_run_job = mocker.patch(
         "instacart_etl_rnn.cli.build_reorder_size_training_dataset."
-        "run_reorder_size_traninig_data",
+        "run_reorder_size_training_data",
         side_effect=error,
     )
 

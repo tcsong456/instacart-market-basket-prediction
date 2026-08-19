@@ -66,7 +66,11 @@ def test_run_reorder_size_training_data_runs_pipeline(
     manager.attach_mock(mocked_write, "write")
 
     run_reorder_size_training_data(
-        input_path="silver", output_path="gold", contract_path="contracts", pad_length=5
+        spark=spark,
+        input_path="silver",
+        output_path="gold",
+        contract_path="contracts",
+        pad_length=5,
     )
 
     assert manager.mock_calls == [
@@ -90,6 +94,7 @@ def test_run_reorder_size_training_data_runs_pipeline(
 
 
 def test_run_reorder_size_training_data_unpersists_when_validation_fails(
+    spark,
     mocker,
 ):
     user_data = mocker.sentinel.user_data
@@ -134,9 +139,11 @@ def test_run_reorder_size_training_data_unpersists_when_validation_fails(
 
     with pytest.raises(DataValidationError):
         run_reorder_size_training_data(
+            spark=spark,
             input_path="silver",
             output_path="gold",
             contract_path="contracts",
+            pad_length=5,
         )
 
     reorder_size_data.persist.assert_called_once_with(StorageLevel.MEMORY_AND_DISK)
