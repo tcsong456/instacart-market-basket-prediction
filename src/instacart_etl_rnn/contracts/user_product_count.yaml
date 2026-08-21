@@ -1,0 +1,30 @@
+dataset:
+  name: user_product_count
+  description: >
+    One row per user-product pair containing the number of times
+    the user has ordered the product.
+  format: parquet
+  allow_extra_columns: false
+
+  grain:
+    - user_id
+    - product_id
+
+schema:
+  - name: user_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: product_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: count
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1

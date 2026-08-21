@@ -16,6 +16,27 @@ PARSE_COLUMNS = [
 
 
 def parse_aisle_seq_data(df: DataFrame, max_padded_length: int = 30) -> DataFrame:
+    """Parse and pad aisle-level historical sequence columns.
+
+    Converts the configured string sequence columns into typed arrays and
+    pads or truncates each array to ``max_padded_length``. Most sequence
+    columns are converted to integer arrays, while
+    ``days_since_prior_orders`` is converted to a double array.
+
+    The original sequence length of ``is_ordered_history``, capped at
+    ``max_padded_length``, is stored in ``history_length``.
+
+    Args:
+        df: Input DataFrame containing aisle-level history and temporal
+            sequence columns as space-separated strings.
+        max_padded_length: Maximum sequence length. Shorter sequences are
+            zero-padded and longer sequences are truncated.
+
+    Returns:
+        A DataFrame containing the aisle identifiers, evaluation split,
+        parsed and padded history/temporal arrays, and ``history_length``.
+    """
+
     for colname in PARSE_COLUMNS:
         if colname == "days_since_prior_orders":
             df = df.withColumn(
