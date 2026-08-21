@@ -34,7 +34,7 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
         order_dows string,
         order_hours string,
         days_since_prior_orders string,
-        order_numbers string,
+        order_numbers string
         """,
     )
 
@@ -109,7 +109,7 @@ def test_parse_aisle_seq_data_truncates_both_sequence_groups(spark):
         order_dows string,
         order_hours string,
         days_since_prior_orders string,
-        order_numbers string,
+        order_numbers string
         """,
     )
 
@@ -163,7 +163,7 @@ def test_parse_aisle_seq_data_handles_exact_history_boundary(spark):
         order_dows string,
         order_hours string,
         days_since_prior_orders string,
-        order_numbers string,
+        order_numbers string
         """,
     )
 
