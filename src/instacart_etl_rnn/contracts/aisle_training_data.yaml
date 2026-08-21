@@ -1,0 +1,211 @@
+dataset:
+  name: aisle_training_data
+  description: >
+    One row per user and aisle containing padded historical aisle-ordering
+    features and temporal order features for downstream model training.
+  format: parquet
+  allow_extra_columns: false
+
+  grain:
+    - user_id
+    - aisle_id
+
+schema:
+  - name: user_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: aisle_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: department_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: eval_set
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - train
+        - test
+
+  - name: is_ordered_history
+    type: array<integer>
+    nullable: false
+    constraints:
+        minimum_array_length: 100
+        maximum_array_length: 100
+
+  - name: position_in_order
+    type: array<integer>
+    nullable: false
+    constraints:
+        minimum_array_length: 100
+        maximum_array_length: 100
+
+  - name: num_products_from_aisle
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: aisle_history_size
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: order_dows
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: order_hours
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: days_since_prior_orders
+    type: array<double>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: order_numbers
+    type: array<integer>
+    nullable: false
+    constraints:
+      minimum_array_length: 100
+      maximum_array_length: 100
+
+  - name: history_length
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+      maximum: 100
+
+rules:
+  - name: ordered_history_is_binary
+    expression: >
+      forall(
+        is_ordered_history,
+        x -> x IN (0, 1)
+      )
+
+  - name: position_in_order_is_non_negative
+    expression: >
+      forall(
+        position_in_order,
+        x -> x >= 0
+      )
+  
+  - name: num_products_from_aisle_is_non_negative
+    expression: >
+      forall(
+        num_products_from_aisle,
+        x -> x >= 0
+      )
+  
+  - name: aisle_history_size_is_non_negative
+    expression: >
+      forall(
+        aisle_history_size,
+        x -> x >= 0
+      )
+  
+  - name: ordered_and_position_are_consistent
+    expression: >
+      forall(
+        arrays_zip(
+          is_ordered_history,
+          position_in_order
+        ),
+        x ->
+          (
+            x.is_ordered_history = 0
+            AND x.position_in_order = 0
+          )
+          OR
+          (
+            x.is_ordered_history = 1
+            AND x.position_in_order > 0
+          )
+      )
+  
+  - name: ordered_and_product_count_are_consistent
+    expression: >
+      forall(
+        arrays_zip(
+          is_ordered_history,
+          num_products_from_aisle
+        ),
+        x ->
+          (
+            x.is_ordered_history = 0
+            AND x.num_products_from_aisle = 0
+          )
+          OR
+          (
+            x.is_ordered_history = 1
+            AND x.num_products_from_aisle > 0
+          )
+      )
+  
+  - name: position_does_not_exceed_aisle_count
+    expression: >
+      forall(
+        arrays_zip(
+          position_in_order,
+          aisle_history_size
+        ),
+        x ->
+          x.position_in_order <= x.aisle_history_size
+      )
+  
+  - name: history_prefix_is_real
+    expression: >
+      forall(
+        sequence(0, history_length - 1),
+        i ->
+          element_at(aisle_history_size, i + 1) > 0
+      )
+
+  - name: history_padding_is_zero
+    expression: >
+      history_length = size(is_ordered_history)
+      OR forall(
+        sequence(history_length, size(is_ordered_history) - 1),
+        i ->
+          element_at(is_ordered_history, i + 1) = 0
+          AND element_at(position_in_order, i + 1) = 0
+          AND element_at(num_products_from_aisle, i + 1) = 0
+          AND element_at(aisle_history_size, i + 1) = 0
+      )
+  
+  - name: temporal_padding_is_zero
+    expression: >
+      history_length >= size(order_numbers) - 1
+      OR forall(
+        sequence(history_length + 1, size(order_numbers) - 1),
+        i ->
+          element_at(order_numbers, i + 1) = 0
+          AND element_at(order_dows, i + 1) = 0
+          AND element_at(order_hours, i + 1) = 0
+          AND element_at(days_since_prior_orders, i + 1) = 0
+      )
