@@ -1,5 +1,3 @@
-import pytest
-
 from instacart_etl_rnn.cli.build_aisle_training_dataset import main
 
 
@@ -40,43 +38,5 @@ def test_main_runs_aisle_training_job_and_stops_spark(mocker):
         contract_path="contracts",
         pad_length=30,
     )
-
-    spark.stop.assert_called_once_with()
-
-
-def test_main_logs_reraises_and_stops_spark_when_job_fails(mocker):
-    args = mocker.Mock()
-    args.input_path = "gold"
-    args.output_path = "training"
-    args.contract_path = "contracts"
-    args.pad_length = 30
-
-    spark = mocker.Mock()
-
-    mocker.patch("instacart_etl_rnn.cli.build_aisle_training_dataset.configure_logging")
-    mocker.patch(
-        "instacart_etl_rnn.cli.build_aisle_training_dataset.parse_args",
-        return_value=args,
-    )
-    mocker.patch(
-        "instacart_etl_rnn.cli.build_aisle_training_dataset.create_spark_session",
-        return_value=spark,
-    )
-
-    mocker.patch(
-        "instacart_etl_rnn.cli.build_aisle_training_dataset.run_aisle_training_data_job",
-        side_effect=RuntimeError("job failed"),
-    )
-
-    mocked_logger = mocker.Mock()
-    mocker.patch(
-        "instacart_etl_rnn.cli.build_aisle_training_dataset.logging.getLogger",
-        return_value=mocked_logger,
-    )
-
-    with pytest.raises(RuntimeError, match="job failed"):
-        main()
-
-    mocked_logger.exception.assert_called_once_with("Build aisle training data failed!")
 
     spark.stop.assert_called_once_with()

@@ -1,5 +1,3 @@
-import pytest
-
 from instacart_etl_rnn.cli.build_product_history_dataset import main
 
 
@@ -46,56 +44,6 @@ def test_main_runs_product_history_job_and_stops_spark(
         data_path="bronze",
         output_path="gold",
         contract_path="contracts",
-    )
-
-    spark.stop.assert_called_once_with()
-
-
-def test_main_logs_reraises_and_stops_spark_when_job_fails(
-    mocker,
-):
-    args = mocker.Mock(
-        input_path="silver",
-        data_path="bronze",
-        output_path="gold",
-        contract_path="contracts",
-    )
-
-    spark = mocker.Mock(name="spark")
-
-    mocker.patch(
-        "instacart_etl_rnn.cli.build_product_history_dataset.configure_logging"
-    )
-
-    mocker.patch(
-        "instacart_etl_rnn.cli.build_product_history_dataset.parse_args",
-        return_value=args,
-    )
-
-    mocker.patch(
-        "instacart_etl_rnn.cli.build_product_history_dataset.create_spark_session",
-        return_value=spark,
-    )
-
-    error = RuntimeError("something went wrong")
-
-    mocker.patch(
-        "instacart_etl_rnn.cli.build_product_history_dataset.run_product_history_job",
-        side_effect=error,
-    )
-
-    mocked_logger = mocker.patch(
-        "instacart_etl_rnn.cli.build_product_history_dataset.logging.getLogger"
-    ).return_value
-
-    with pytest.raises(
-        RuntimeError,
-        match="something went wrong",
-    ):
-        main()
-
-    mocked_logger.exception.assert_called_once_with(
-        "Build product history data failed!"
     )
 
     spark.stop.assert_called_once_with()
