@@ -8,6 +8,10 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
     df = spark.createDataFrame(
         [
             (
+                1,
+                5,
+                50,
+                "train",
                 "1 0 1",
                 "2 0 3",
                 "1 2 1",
@@ -19,6 +23,10 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
             ),
         ],
         """
+        user_id int,
+        aisle_id int,
+        department_id int,
+        eval_set string,
         is_ordered_history string,
         position_in_order string,
         num_products_from_aisle string,
@@ -26,7 +34,7 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
         order_dows string,
         order_hours string,
         days_since_prior_orders string,
-        order_numbers string
+        order_numbers string,
         """,
     )
 
@@ -36,6 +44,11 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
     )
 
     row = result.first()
+
+    assert row["user_id"] == 1
+    assert row["aisle_id"] == 5
+    assert row["department_id"] == 50
+    assert row["eval_set"] == "train"
 
     assert row["is_ordered_history"] == [1, 0, 1, 0, 0]
     assert row["position_in_order"] == [2, 0, 3, 0, 0]
@@ -49,11 +62,31 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
     assert row["days_since_prior_orders"] == [-1.0, 7.0, 5.0, 4.0, 0.0]
     assert row["order_numbers"] == [1, 2, 3, 4, 0]
 
+    assert set(result.columns) == {
+        "user_id",
+        "aisle_id",
+        "department_id",
+        "eval_set",
+        "is_ordered_history",
+        "position_in_order",
+        "num_products_from_aisle",
+        "aisle_history_size",
+        "order_dows",
+        "order_hours",
+        "days_since_prior_orders",
+        "order_numbers",
+        "history_length",
+    }
+
 
 def test_parse_aisle_seq_data_truncates_both_sequence_groups(spark):
     df = spark.createDataFrame(
         [
             (
+                1,
+                5,
+                50,
+                "train",
                 "1 1 0 1 1",
                 "1 2 0 3 4",
                 "2 2 1 3 4",
@@ -65,6 +98,10 @@ def test_parse_aisle_seq_data_truncates_both_sequence_groups(spark):
             ),
         ],
         """
+        user_id int,
+        aisle_id int,
+        department_id int,
+        eval_set string,
         is_ordered_history string,
         position_in_order string,
         num_products_from_aisle string,
@@ -72,7 +109,7 @@ def test_parse_aisle_seq_data_truncates_both_sequence_groups(spark):
         order_dows string,
         order_hours string,
         days_since_prior_orders string,
-        order_numbers string
+        order_numbers string,
         """,
     )
 
@@ -95,27 +132,15 @@ def test_parse_aisle_seq_data_truncates_both_sequence_groups(spark):
     assert row["days_since_prior_orders"] == [-1.0, 7.0, 5.0, 4.0]
     assert row["order_numbers"] == [1, 2, 3, 4]
 
-    assert set(result.columns) == {
-        "user_id",
-        "aisle_id",
-        "department_id",
-        "eval_set",
-        "is_ordered_history",
-        "position_in_order",
-        "num_products_from_aisle",
-        "aisle_history_size",
-        "order_dows",
-        "order_hours",
-        "days_since_prior_orders",
-        "order_numbers",
-        "history_length",
-    }
-
 
 def test_parse_aisle_seq_data_handles_exact_history_boundary(spark):
     df = spark.createDataFrame(
         [
             (
+                1,
+                5,
+                50,
+                "train",
                 "1 0 1 1",
                 "2 0 3 1",
                 "1 2 1 3",
@@ -127,6 +152,10 @@ def test_parse_aisle_seq_data_handles_exact_history_boundary(spark):
             ),
         ],
         """
+        user_id int,
+        aisle_id int,
+        department_id int,
+        eval_set string,
         is_ordered_history string,
         position_in_order string,
         num_products_from_aisle string,
@@ -134,7 +163,7 @@ def test_parse_aisle_seq_data_handles_exact_history_boundary(spark):
         order_dows string,
         order_hours string,
         days_since_prior_orders string,
-        order_numbers string
+        order_numbers string,
         """,
     )
 
@@ -162,6 +191,10 @@ def test_parse_aisle_seq_data_handles_empty_sequences(spark):
     df = spark.createDataFrame(
         [
             (
+                1,
+                5,
+                50,
+                "train",
                 "",
                 "",
                 "",
@@ -173,6 +206,10 @@ def test_parse_aisle_seq_data_handles_empty_sequences(spark):
             ),
         ],
         """
+        user_id int,
+        aisle_id int,
+        department_id int,
+        eval_set string,
         is_ordered_history string,
         position_in_order string,
         num_products_from_aisle string,
