@@ -1,0 +1,404 @@
+dataset:
+  name: simulation_order_data
+  description: >
+    Order-level dataset defining deterministic model-development,
+    validation, and simulated production periods for established and
+    newly arriving users.
+
+    Established-user labels roll forward over time:
+      initial: N-3 train, N-2 validation
+      t1:      N-2 train, N-1 validation
+      t2:      N-1 train, N validation
+
+    New users contribute N-1 as a training label and N as a validation
+    label during their arrival period. In subsequent periods their
+    previously validated order becomes a training label and they no
+    longer participate in validation.
+
+  grain:
+    - order_id
+
+  allow_extra_columns: false
+
+schema:
+  - name: user_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: order_id
+    type: integer
+    nullable: false
+    constraints:
+      unique: true
+      minimum: 1
+
+  - name: eval_set
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - prior
+        - train
+
+  - name: order_number
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: order_dow
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 0
+      maximum: 6
+
+  - name: order_hour_of_day
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 0
+      maximum: 23
+
+  - name: days_since_prior_order
+    type: double
+    nullable: true
+    constraints:
+      minimum: 0
+
+  - name: order_history
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: user_cohort
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - established
+        - new_user
+        - final_holdout
+        - excluded
+
+  - name: development_split
+    type: string
+    nullable: true
+    constraints:
+      allowed_values:
+        - base_train
+        - stacking_train
+
+  - name: arrival_period
+    type: string
+    nullable: true
+    constraints:
+      allowed_values:
+        - t1
+        - t2
+
+  - name: simulation_period
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - initial
+        - validation
+        - t1
+        - t2
+        - new_user_pool
+        - final_holdout
+        - excluded
+
+  - name: current_period
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - initial
+        - t1
+        - t2
+
+  - name: order_role
+    type: string
+    nullable: true
+    constraints:
+      allowed_values:
+        - history
+        - train_label
+        - validation_label
+        - future
+
+derived_fields:
+  - name: min_order_number
+    aggregation: min
+    column: order_number
+    partition_by:
+      - user_id
+
+  - name: max_order_number
+    aggregation: max
+    column: order_number
+    partition_by:
+      - user_id
+
+  - name: order_count
+    aggregation: count
+    column: order_number
+    partition_by:
+      - user_id
+
+  - name: development_split_count
+    aggregation: count_distinct
+    column: development_split
+    partition_by:
+      - user_id
+
+  - name: arrival_period_count
+    aggregation: count_distinct
+    column: arrival_period
+    partition_by:
+      - user_id
+
+  - name: train_label_count
+    aggregation: conditional_count
+    condition: order_role = 'train_label'
+    partition_by:
+      - user_id
+
+  - name: validation_label_count
+    aggregation: conditional_count
+    condition: order_role = 'validation_label'
+    partition_by:
+      - user_id
+
+rules:
+  - name: first_order_has_no_prior_interval
+    expression: >
+      order_number <> 1
+      OR days_since_prior_order IS NULL
+
+  - name: later_orders_have_prior_interval
+    expression: >
+      order_number = 1
+      OR days_since_prior_order IS NOT NULL
+
+  - name: order_number_does_not_exceed_history
+    expression: >
+      order_number <= order_history
+
+  - name: order_history_matches_max_order_number
+    expression: >
+      max_order_number = order_history
+
+  - name: order_numbers_start_at_one
+    expression: >
+      min_order_number = 1
+
+  - name: order_count_matches_history
+    expression: >
+      order_count = order_history
+  
+  - name: established_users_have_sufficient_history
+    expression: >
+      user_cohort <> 'established'
+      OR order_history >= 6
+
+  - name: new_users_have_expected_history
+    expression: >
+      user_cohort <> 'new_user'
+      OR order_history BETWEEN 3 AND 5
+
+  - name: development_split_only_for_established
+    expression: >
+      (
+        user_cohort = 'established'
+        AND development_split IN ('base_train', 'stacking_train')
+      )
+      OR (
+        user_cohort <> 'established'
+        AND development_split IS NULL
+      )
+
+  - name: arrival_period_only_for_new_users
+    expression: >
+      (
+        user_cohort = 'new_user'
+        AND arrival_period IN ('t1', 't2')
+      )
+      OR (
+        user_cohort <> 'new_user'
+        AND arrival_period IS NULL
+      )
+
+  - name: established_development_split_is_constant
+    expression: >
+      user_cohort <> 'established'
+      OR development_split_count = 1
+
+  - name: new_user_arrival_period_is_constant
+    expression: >
+      user_cohort <> 'new_user'
+      OR arrival_period_count = 1
+  
+  - name: established_initial_roles_are_correct
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 'initial'
+      OR (
+        (
+          order_number < order_history - 3
+          AND order_role = 'history'
+        )
+        OR (
+          order_number = order_history - 3
+          AND order_role = 'train_label'
+        )
+        OR (
+          order_number = order_history - 2
+          AND order_role = 'validation_label'
+        )
+        OR (
+          order_number > order_history - 2
+          AND order_role = 'future'
+        )
+      )
+    
+  - name: established_t1_roles_are_correct
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 't1'
+      OR (
+        (
+          order_number < order_history - 2
+          AND order_role = 'history'
+        )
+        OR (
+          order_number = order_history - 2
+          AND order_role = 'train_label'
+        )
+        OR (
+          order_number = order_history - 1
+          AND order_role = 'validation_label'
+        )
+        OR (
+          order_number > order_history - 1
+          AND order_role = 'future'
+        )
+      )
+  
+  - name: established_t2_roles_are_correct
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 't2'
+      OR (
+        (
+          order_number < order_history - 1
+          AND order_role = 'history'
+        )
+        OR (
+          order_number = order_history - 1
+          AND order_role = 'train_label'
+        )
+        OR (
+          order_number = order_history
+          AND order_role = 'validation_label'
+        )
+      )
+  
+  - name: new_users_are_future_before_arrival
+    expression: >
+      user_cohort <> 'new_user'
+      OR NOT (
+        current_period = 'initial'
+        OR (
+          current_period = 't1'
+          AND arrival_period = 't2'
+        )
+      )
+      OR order_role = 'future'
+    
+  - name: current_new_user_roles_are_correct
+    expression: >
+      user_cohort <> 'new_user'
+      OR arrival_period <> current_period
+      OR (
+        (
+          order_number < order_history - 1
+          AND order_role = 'history'
+        )
+        OR (
+          order_number = order_history - 1
+          AND order_role = 'train_label'
+        )
+        OR (
+          order_number = order_history
+          AND order_role = 'validation_label'
+        )
+      )
+  
+  - name: previous_new_user_roles_are_correct
+    expression: >
+      user_cohort <> 'new_user'
+      OR NOT (
+        arrival_period = 't1'
+        AND current_period = 't2'
+      )
+      OR (
+        (
+          order_number < order_history
+          AND order_role = 'history'
+        )
+        OR (
+          order_number = order_history
+          AND order_role = 'train_label'
+        )
+      )
+  
+  - name: established_has_one_train_label
+    expression: >
+      user_cohort <> 'established'
+      OR train_label_count = 1
+
+  - name: established_has_one_validation_label
+    expression: >
+      user_cohort <> 'established'
+      OR validation_label_count = 1
+  
+  - name: current_new_user_has_one_train_label
+    expression: >
+      user_cohort <> 'new_user'
+      OR arrival_period <> current_period
+      OR train_label_count = 1
+
+  - name: current_new_user_has_one_validation_label
+    expression: >
+      user_cohort <> 'new_user'
+      OR arrival_period <> current_period
+      OR validation_label_count = 1
+  
+  - name: previous_new_user_has_one_train_label
+    expression: >
+      user_cohort <> 'new_user'
+      OR NOT (
+        arrival_period = 't1'
+        AND current_period = 't2'
+      )
+      OR train_label_count = 1
+
+  - name: previous_new_user_has_no_validation_label
+    expression: >
+      user_cohort <> 'new_user'
+      OR NOT (
+        arrival_period = 't1'
+        AND current_period = 't2'
+      )
+      OR validation_label_count = 0
+  
+  - name: holdout_and_excluded_have_no_model_role
+    expression: >
+      user_cohort NOT IN ('final_holdout', 'excluded')
+      OR order_role IS NULL
