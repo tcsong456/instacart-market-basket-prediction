@@ -55,13 +55,13 @@ def test_add_order_role_assigns_established_user_roles(
             (1, 5, 6, "established", None),
             (1, 6, 6, "established", None),
         ],
-        [
-            "user_id",
-            "order_number",
-            "order_history",
-            "user_cohort",
-            "arrival_period",
-        ],
+        """
+        user_id int,
+        order_number int,
+        order_history int,
+        user_cohort string,
+        arrival_period string
+        """,
     )
 
     result = add_order_role(df, period)
