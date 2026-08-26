@@ -12,13 +12,14 @@ logger = logging.getLogger(__name__)
 
 DATASETS = [
     "products",
-    "orders",
     "order_products__prior",
     "order_products__train",
 ]
 
 
-def read_input_datasets(spark: SparkSession, input_path: str) -> dict[str, DataFrame]:
+def read_input_datasets(
+    spark: SparkSession, input_path: str, order_path: str
+) -> dict[str, DataFrame]:
     datasets_mapping = {}
     for dataset_name in DATASETS:
         logger.info(
@@ -29,11 +30,18 @@ def read_input_datasets(spark: SparkSession, input_path: str) -> dict[str, DataF
         df = read_parquet(join_path(input_path, dataset_name), spark)
         datasets_mapping[dataset_name] = df
 
+    orders = read_parquet(join_path(order_path, "available_orders"), spark)
+    datasets_mapping["orders"] = orders
+
     return datasets_mapping
 
 
 def build_order_products(
-    spark: SparkSession, input_path: str, output_path: str, contract_path: str
+    spark: SparkSession,
+    input_path: str,
+    output_path: str,
+    contract_path: str,
+    order_path: str,
 ) -> None:
     """Build, validate, and write the silver order_products dataset.
 
@@ -48,14 +56,14 @@ def build_order_products(
         input_path: Base path containing the bronze input datasets.
         output_path: Path where the silver order_products dataset is written.
         contract_path: Base path containing the dataset contracts.
+        order_path: Base path containing the orders dataset
 
     Returns:
         None.
     """
 
     df_dicts = read_input_datasets(
-        spark=spark,
-        input_path=input_path,
+        spark=spark, input_path=input_path, order_path=order_path
     )
 
     orders_prior, orders_train = (
@@ -70,9 +78,9 @@ def build_order_products(
     order_products = order_products.join(orders, how="left", on=["order_id"]).join(
         products, how="left", on=["product_id"]
     )
-    order_products = order_products.fillna({"days_since_prior_order": -1})
+    order_products = order_products.fillna({"days_since_prior_order": -1.0})
 
     contract = load_contract(join_path(contract_path, "order_products_silver.yaml"))
     validate_dataset(order_products, contract=contract)
 
-    write_parquet(path=output_path, df=order_products)
+    write_parquet(join_path(output_path, "order_products"), df=order_products)
