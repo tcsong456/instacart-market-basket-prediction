@@ -1,43 +1,35 @@
 dataset:
   name: order_products
   description: >
-    One row per product within an order, enriched with order-level
-    and product-level attributes for downstream ETL and modeling.
-  format: parquet
-  allow_extra_columns: false
-
+    Order-product level dataset with deterministic user cohorts,
+    development splits, simulation periods, and order roles.
   grain:
     - order_id
     - product_id
+  allow_extra_columns: false
 
 schema:
   - name: product_id
     type: integer
     nullable: false
-    description: Unique identifier for the product.
     constraints:
       minimum: 1
 
   - name: order_id
     type: integer
     nullable: false
-    description: Unique identifier for the order.
     constraints:
       minimum: 1
 
   - name: add_to_cart_order
     type: integer
     nullable: false
-    description: Position in which the product was added to the cart.
     constraints:
       minimum: 1
 
   - name: reordered
     type: integer
     nullable: false
-    description: >
-      Indicates whether the product had been ordered previously
-      by the user.
     constraints:
       allowed_values:
         - 0
@@ -46,14 +38,12 @@ schema:
   - name: user_id
     type: integer
     nullable: false
-    description: Unique identifier for the user.
     constraints:
       minimum: 1
 
   - name: eval_set
     type: string
     nullable: false
-    description: Dataset split assigned to the order.
     constraints:
       allowed_values:
         - prior
@@ -62,14 +52,12 @@ schema:
   - name: order_number
     type: integer
     nullable: false
-    description: Sequential order number for the user.
     constraints:
       minimum: 1
 
   - name: order_dow
     type: integer
     nullable: false
-    description: Day of week on which the order was placed.
     constraints:
       minimum: 0
       maximum: 6
@@ -77,7 +65,6 @@ schema:
   - name: order_hour_of_day
     type: integer
     nullable: false
-    description: Hour of day on which the order was placed.
     constraints:
       minimum: 0
       maximum: 23
@@ -85,44 +72,176 @@ schema:
   - name: days_since_prior_order
     type: double
     nullable: false
-    description: >
-      Number of days since the user's previous order. A value of -1
-      represents the user's first order.
     constraints:
-      minimum: -1
-      maximum: 30
+      minimum: -1.0
+
+  - name: order_history
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 1
+
+  - name: user_cohort
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - established
+        - new_user
+        - final_holdout
+        - excluded
+
+  - name: development_split
+    type: string
+    nullable: true
+    constraints:
+      allowed_values:
+        - base_train
+        - stacking_train
+
+  - name: arrival_period
+    type: string
+    nullable: true
+    constraints:
+      allowed_values:
+        - t1
+        - t2
+
+  - name: simulation_period
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - initial
+        - validation
+        - t1
+        - t2
+        - new_user_pool
+        - final_holdout
+        - excluded
+
+  - name: current_period
+    type: string
+    nullable: false
+    constraints:
+      allowed_values:
+        - initial
+        - t1
+        - t2
+
+  - name: order_role
+    type: string
+    nullable: true
+    constraints:
+      allowed_values:
+        - history
+        - train_label
+        - validation_label
+        - future
 
   - name: product_name
     type: string
     nullable: false
-    description: Human-readable product name.
     constraints:
       minimum_string_length: 1
 
   - name: aisle_id
     type: integer
     nullable: false
-    description: Identifier of the aisle containing the product.
     constraints:
       minimum: 1
 
   - name: department_id
     type: integer
     nullable: false
-    description: Identifier of the department containing the product.
     constraints:
       minimum: 1
 
+derived_fields:
+  - name: arrival_period_constant_per_new_user
+    partition_by:
+      - user_id
+    aggregation: count_distinct
+    column: arrival_period
+
+  - name: development_split_constant_per_user
+    partition_by:
+      - user_id
+    aggregation: count_distinct
+    column: development_split
+
+  - name: user_cohort_constant_per_user
+    partition_by:
+      - user_id
+    aggregation: count_distinct
+    column: user_cohort
+
+  - name: order_history_constant_per_user
+    partition_by:
+      - user_id
+    aggregation: count_distinct
+    column: order_history
+  
 rules:
   - name: first_order_has_no_prior_interval
-    description: >
-      The first order for a user must use -1 as the sentinel value
-      for days_since_prior_order.
     expression: >
-      order_number <> 1 OR days_since_prior_order = -1
+      order_number <> 1 OR days_since_prior_order=-1.0
   
-  - name: later_orders_have_prior_interval
-    description: >
-      Orders after the first must have a non-negative prior-order interval.
+  - name: later_orders_must_have_prior_interval
     expression: >
       order_number = 1 OR days_since_prior_order >= 0
+
+  - name: order_number_within_order_history
+    expression: >
+      order_number <= order_history
+
+  - name: established_users_have_development_split
+    expression: >
+      user_cohort <> 'established'
+      OR development_split IS NOT NULL
+
+  - name: non_established_users_have_no_development_split
+    expression: >
+      user_cohort = 'established'
+      OR development_split IS NULL
+    
+  - name: new_users_have_arrival_period
+    expression: >
+      user_cohort <> 'new_user'
+      OR arrival_period IS NOT NULL
+    
+  - name: non_new_users_have_no_arrival_period
+    expression: >
+      user_cohort = 'new_user'
+      OR arrival_period IS NULL
+
+  - name: final_holdout_has_no_order_role
+    expression: >
+      user_cohort <> 'final_holdout'
+      OR order_role IS NULL
+    
+  - name: excluded_users_have_no_order_role
+    expression: >
+      user_cohort <> 'excluded'
+      OR order_role IS NULL
+    
+  - name: established_users_have_order_role
+    expression: >
+      user_cohort <> 'established'
+      OR order_role IS NOT NULL
+  
+  - name: user_constant_arrival_period
+    expression: >
+      arrival_period_constant_per_new_user <= 1
+  
+  - name: user_constant_development_split
+    expression: >
+      development_split_constant_per_user <= 1
+  
+  - name: user_cohort_constant
+    expression: >
+      user_cohort_constant_per_user = 1
+  
+  - name: order_history_constant
+    expression: >
+      order_history_constant_per_user = 1

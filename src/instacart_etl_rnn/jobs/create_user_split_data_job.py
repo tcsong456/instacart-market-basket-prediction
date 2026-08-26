@@ -36,6 +36,6 @@ def run_user_split_job(
         contract = load_contract(join_path(contract_path, "user_split_data.yaml"))
         validate_dataset(available_orders, contract=contract)
 
-        write_parquet(join_path(output_path, "available_order"), available_orders)
+        write_parquet(join_path(output_path, "available_orders"), available_orders)
     finally:
         available_orders.unpersist()

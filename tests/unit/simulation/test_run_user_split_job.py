@@ -82,8 +82,8 @@ def test_run_user_split_job_runs_pipeline_in_order(
         call.join("contracts", "user_split_data.yaml"),
         call.load("contracts/user_split_data.yaml"),
         call.validate(available_orders, contract=contract),
-        call.join("output", "available_order"),
-        call.write("output/available_order", available_orders),
+        call.join("output", "available_orders"),
+        call.write("output/available_orders", available_orders),
     ]
 
     available_orders.persist.assert_called_once_with(

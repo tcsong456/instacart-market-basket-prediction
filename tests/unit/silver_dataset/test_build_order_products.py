@@ -1,3 +1,5 @@
+from unittest.mock import call
+
 import pytest
 
 from instacart_etl_rnn.silver.create_order_products import build_order_products
@@ -90,15 +92,19 @@ def test_build_order_products_builds_validates_and_writes(
     build_order_products(
         spark=mocker.sentinel.spark,
         input_path="bronze",
-        output_path="silver/order_products",
+        output_path="silver",
         contract_path="contracts",
+        order_path="orders",
     )
 
     mocked_read.assert_called_once_with(
-        spark=mocker.sentinel.spark, input_path="bronze"
+        spark=mocker.sentinel.spark, input_path="bronze", order_path="orders"
     )
 
-    mocked_join.assert_called_once_with("contracts", "order_products_silver.yaml")
+    assert mocked_join.call_args_list == [
+        call("contracts", "order_products_silver.yaml"),
+        call("silver", "order_products"),
+    ]
 
     mocked_load_contract.assert_called_once_with("contracts/order_products_silver.yaml")
 
@@ -106,7 +112,7 @@ def test_build_order_products_builds_validates_and_writes(
 
     assert mocked_validate.call_args.kwargs == {"contract": contract}
 
-    mocked_write.assert_called_once_with(path="silver/order_products", df=df)
+    mocked_write.assert_called_once_with("silver/order_products", df=df)
 
     written_df = mocked_write.call_args.kwargs["df"]
     results = written_df.orderBy("order_id").collect()
@@ -201,8 +207,9 @@ def test_build_order_products_does_not_write_when_validation_fails(
         build_order_products(
             spark=spark,
             input_path="bronze",
-            output_path="silver/order_products",
+            output_path="silver",
             contract_path="contracts",
+            order_path="orders",
         )
 
     mocked_write.assert_not_called()

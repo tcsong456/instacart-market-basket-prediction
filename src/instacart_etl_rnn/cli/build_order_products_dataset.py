@@ -11,6 +11,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-path", required=True)
     parser.add_argument("--contract-path", required=True)
     parser.add_argument("--output-path", required=True)
+    parser.add_argument("--order-path", required=True)
     return parser.parse_args()
 
 
@@ -28,6 +29,7 @@ def main() -> None:
             input_path=args.input_path,
             contract_path=args.contract_path,
             output_path=args.output_path,
+            order_path=args.order_path,
         )
     except Exception:
         logger.exception("Building order_products dataset failed")
