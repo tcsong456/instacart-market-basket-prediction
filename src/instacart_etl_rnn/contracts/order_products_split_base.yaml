@@ -1,0 +1,86 @@
+dataset:
+  grain:
+    - order_id
+    - product_id
+  allow_extra_columns: false
+
+schema:
+  - name: product_id
+    type: integer
+    nullable: false
+
+  - name: order_id
+    type: integer
+    nullable: false
+
+  - name: add_to_cart_order
+    type: integer
+    nullable: false
+
+  - name: reordered
+    type: integer
+    nullable: false
+
+  - name: user_id
+    type: integer
+    nullable: false
+
+  - name: eval_set
+    type: string
+    nullable: false
+
+  - name: order_number
+    type: integer
+    nullable: false
+
+  - name: order_dow
+    type: integer
+    nullable: false
+
+  - name: order_hour_of_day
+    type: integer
+    nullable: false
+
+  - name: days_since_prior_order
+    type: double
+    nullable: false
+
+  - name: order_history
+    type: integer
+    nullable: false
+
+  - name: user_cohort
+    type: string
+    nullable: false
+
+  - name: development_split
+    type: string
+    nullable: true
+
+  - name: arrival_period
+    type: string
+    nullable: true
+
+  - name: simulation_period
+    type: string
+    nullable: false
+
+  - name: current_period
+    type: string
+    nullable: false
+
+  - name: order_role
+    type: string
+    nullable: false
+
+  - name: product_name
+    type: string
+    nullable: false
+
+  - name: aisle_id
+    type: integer
+    nullable: false
+
+  - name: department_id
+    type: integer
+    nullable: false
