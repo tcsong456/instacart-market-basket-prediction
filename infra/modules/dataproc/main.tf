@@ -8,7 +8,6 @@ resource "google_dataproc_cluster" "instacart_cluster" {
     temp_bucket    = var.temp_bucket
 
     gce_cluster_config {
-      zone            = "${var.region}-b"
       service_account = var.service_account_email
       service_account_scopes = [
         "https://www.googleapis.com/auth/cloud-platform",
