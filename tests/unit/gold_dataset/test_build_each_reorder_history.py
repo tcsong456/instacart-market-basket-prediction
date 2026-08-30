@@ -36,7 +36,7 @@ def test_build_each_reorder_history(spark):
             "order_numbers",
         ],
     )
-    
+
     result = build_each_reorder_history(df)
 
     rows = {row.user_id: row for row in result.collect()}
