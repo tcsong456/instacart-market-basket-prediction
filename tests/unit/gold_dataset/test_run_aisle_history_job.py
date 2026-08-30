@@ -103,7 +103,7 @@ def test_run_aisle_history_job_builds_validates_and_writes(
     assert actual[(1, 24)]["eval_set"] == "train"
     assert "department_id" not in aisle_history_df.columns
 
-    assert written_path == f"{tmp_path}/gold/aisle_history_data"
+    assert written_path == f"{tmp_path}/gold/aisle_history_data_validation"
     assert validated_df.collect() == written_df.collect()
 
 

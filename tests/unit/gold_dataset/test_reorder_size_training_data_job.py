@@ -145,6 +145,7 @@ def test_run_reorder_size_training_data_unpersists_when_validation_fails(
             output_path="gold",
             contract_path="contracts",
             pad_length=5,
+            mode="train",
         )
 
     reorder_size_data.persist.assert_called_once_with(StorageLevel.MEMORY_AND_DISK)

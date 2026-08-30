@@ -15,6 +15,7 @@ def test_build_each_product_in_order_history(mocker, spark):
                 "18 10 3 9 20",
                 "27 7 11 23 30",
                 "1 2 3 4 5",
+                "train",
             ),
         ],
         [
@@ -26,6 +27,7 @@ def test_build_each_product_in_order_history(mocker, spark):
             "order_hours",
             "days_since_prior_orders",
             "order_numbers",
+            "eval_set",
         ],
     )
 
@@ -72,6 +74,7 @@ def test_build_each_product_in_order_history(mocker, spark):
 
     assert rows[1].label == 0
     assert rows[1].is_ordered_history == "1 0 0 0"
+    assert rows[1].eval_set == "train"
     assert rows[1].position_in_order_history == "1 0 0 0"
     assert rows[1].product_name == "apple"
     assert rows[1].aisle_id == 3
@@ -124,16 +127,7 @@ def test_build_each_product_in_order_history_empty_next_basket(
 ):
     input_df = spark.createDataFrame(
         [
-            (
-                1,
-                [[1, 2]],
-                [1, 2],
-                [],
-                "5",
-                "19",
-                "16",
-                "1",
-            ),
+            (1, [[1, 2]], [1, 2], [], "5", "19", "16", "1", "prior"),
         ],
         schema="""
             user_id INT,
@@ -143,7 +137,8 @@ def test_build_each_product_in_order_history_empty_next_basket(
             order_dows STRING,
             order_hours STRING,
             days_since_prior_orders STRING,
-            order_numbers STRING
+            order_numbers STRING,
+            eval_set STRING
         """,
     )
 
@@ -183,6 +178,7 @@ def test_build_each_product_in_order_history_empty_next_basket(
     assert rows[1].history_order_size == "2"
     assert rows[1].history_reorder_size == "0"
     assert rows[1].label == 0
+    assert rows[1].eval_set == "prior"
     assert rows[1].is_ordered_history == "1"
     assert rows[1].position_in_order_history == "1"
     assert rows[1].product_name == "apple"

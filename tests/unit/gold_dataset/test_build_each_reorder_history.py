@@ -36,17 +36,8 @@ def test_build_each_reorder_history(spark):
             "order_numbers",
         ],
     )
-
-    orders = spark.createDataFrame(
-        [
-            (1, "train"),
-            (2, "train"),
-            (3, "test"),
-        ],
-        ["user_id", "train_eval_set"],
-    )
-
-    result = build_each_reorder_history(df, orders)
+    
+    result = build_each_reorder_history(df)
 
     rows = {row.user_id: row for row in result.collect()}
 
