@@ -22,52 +22,11 @@ COLUMNS = [
     "order_number",
     "order_dow",
     "order_hour_of_day",
+    "days_since_prior_order",
     "product_name",
     "aisle_id",
     "department_id",
 ]
-
-
-def build_role_contract(
-    base_contract: dict,
-    role: str,
-) -> dict:
-    if role not in {
-        "history",
-        "train_label",
-        "validation_label",
-    }:
-        raise ValueError(f"Unsupported order role: {role}")
-
-    contract = copy.deepcopy(base_contract)
-
-    contract["dataset"]["name"] = f"order_products_{role}"
-
-    contract["schema"] = [
-        {
-            **field,
-            **(
-                {
-                    "constraints": {
-                        **field.get("constraints", {}),
-                        "allowed_values": [role],
-                    }
-                }
-                if field["name"] == "order_role"
-                else {}
-            ),
-        }
-        for field in contract["schema"]
-    ]
-
-    contract["rules"] = [
-        {
-            "name": f"contains_only_{role}_rows",
-            "expression": f"order_role = '{role}'",
-        }
-    ]
-
-    return contract
 
 
 def run_order_products_split_job(
@@ -75,11 +34,44 @@ def run_order_products_split_job(
     input_path: str,
     output_path: str,
     mode: str,
+    period: str,
     contract_path: str,
 ) -> None:
+    """Build and persist order-product splits for model training.
+
+    Reads the simulated order-product dataset, selects users for either the
+    base-model or stacking-model workflow, and splits the selected data into
+    training, validation, and evaluation histories based on availability
+    flags.
+
+    Base-model mode writes training, validation, and evaluation datasets for
+    the requested simulation period. Stacking mode writes only training and
+    validation datasets under the ``stacking_train`` output path.
+
+    Each output is restricted to the persisted split columns and validated
+    against the base order-products split contract before being written.
+
+    Args:
+        spark: Active Spark session.
+        input_path: Base path containing the order-products input dataset.
+        output_path: Base path for persisted split datasets.
+        mode: Model workflow to build. Must be ``base_train`` or
+            ``stacking_train``.
+        period: Simulation period. Must be ``initial``, ``t1``, or ``t2``.
+        contract_path: Base path containing the split data contract.
+
+    Raises:
+        ValueError: If ``mode`` or ``period`` is unsupported.
+    """
+
     if mode not in ["base_train", "stacking_train"]:
         raise ValueError(
             f"mode must be either base_train or stacking_train, but received {mode}"
+        )
+
+    if period not in ["initial", "t1", "t2"]:
+        raise ValueError(
+            f"period can only be one of [initial, t1, t2], but received {period}"
         )
 
     order_products = read_parquet(join_path(input_path, "order_products"), spark)
@@ -87,9 +79,12 @@ def run_order_products_split_job(
     if mode == "base_train":
         model = select_base_model_users(order_products)
     else:
+        period = "stacking_train"
         model = select_stacking_model_users(order_products)
 
-    history, train_label, validation_label = split_order_products_by_role(model)
+    train_history, evaluation_history, validation_history = (
+        split_order_products_by_role(model)
+    )
 
     base_contract = load_contract(
         join_path(
@@ -99,23 +94,25 @@ def run_order_products_split_job(
     )
 
     role_datasets = {
-        "history": history,
-        "train_label": train_label,
-        "validation_label": validation_label,
+        "order_products_train": train_history,
+        "order_products_validation": validation_history,
     }
 
-    for role, df in role_datasets.items():
-        contract = build_role_contract(
-            base_contract,
-            role,
-        )
+    if mode == "base_train":
+        role_datasets["order_products_evaluation"] = evaluation_history
+
+    for name, df in role_datasets.items():
+        contract = copy.deepcopy(base_contract)
+        contract["dataset"]["name"] = name
+
+        output_df = df.select(COLUMNS)
 
         validate_dataset(
-            df,
+            output_df,
             contract=contract,
         )
 
         write_parquet(
-            join_path(output_path, f"{mode}_{role}"),
-            df.select(COLUMNS),
+            join_path(f"{output_path}/{period}", name),
+            output_df,
         )

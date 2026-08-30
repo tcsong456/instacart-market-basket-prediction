@@ -227,7 +227,7 @@ def build_product_training_data(
     return df.select(
         "user_id",
         "product_id",
-        "train_eval_set",
+        "eval_set",
         "label",
         "product_name_encoded",
         "is_ordered_history",

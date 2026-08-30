@@ -14,6 +14,7 @@ def test_main_runs_product_training_job_and_stops_spark(
     args.min_word_freq = 5
     args.product_name_length = 50
     args.encode_length = 40
+    args.mode = "train"
 
     spark = mocker.Mock()
 
@@ -52,6 +53,7 @@ def test_main_runs_product_training_job_and_stops_spark(
         min_word_freq=5,
         product_name_length=50,
         encode_length=40,
+        mode="train",
     )
 
     spark.stop.assert_called_once_with()
@@ -68,6 +70,7 @@ def test_main_logs_reraises_and_stops_spark_when_job_fails(
     args.min_word_freq = 5
     args.product_name_length = 50
     args.encode_length = 40
+    args.mode = "validation"
 
     spark = mocker.Mock()
 

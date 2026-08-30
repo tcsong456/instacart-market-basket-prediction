@@ -3,39 +3,43 @@ from instacart_etl_rnn.simulation.create_order_product_split import (
 )
 
 
-def test_select_stacking_model_users_filters_and_assigns_roles(spark):
+def test_select_stacking_model_users_filters_and_sets_availability(
+    spark,
+):
     df = spark.createDataFrame(
         [
-            (1, 1, 4, "established", "stacking_train"),
-            (1, 2, 4, "established", "stacking_train"),
-            (1, 3, 4, "established", "stacking_train"),
-            (1, 4, 4, "established", "stacking_train"),
-            (2, 1, 3, "established", "base_train"),
-            (2, 2, 3, "established", "base_train"),
-            (2, 3, 3, "established", "base_train"),
-            (3, 1, 3, "new_user", "stacking_train"),
-            (3, 2, 3, "new_user", "stacking_train"),
-            (3, 3, 3, "new_user", "stacking_train"),
+            (1, 1, 4, "established", "stacking_train", False, False),
+            (1, 2, 4, "established", "stacking_train", False, False),
+            (1, 3, 4, "established", "stacking_train", False, False),
+            (1, 4, 4, "established", "stacking_train", False, False),
+            (2, 1, 4, "established", "base_train", True, True),
+            (3, 1, 4, "new_user", None, True, True),
+            (4, 1, 4, "final_holdout", None, False, False),
         ],
-        [
-            "user_id",
-            "order_number",
-            "order_history",
-            "user_cohort",
-            "development_split",
-        ],
+        """
+        user_id int,
+        order_number int,
+        order_history int,
+        user_cohort string,
+        development_split string,
+        is_train_available boolean,
+        is_validation_available boolean
+        """,
     )
 
     result = select_stacking_model_users(df)
 
     actual = {
-        (row["user_id"], row["order_number"]): row["order_role"]
+        row.order_number: (
+            row.is_train_available,
+            row.is_validation_available,
+        )
         for row in result.collect()
     }
 
     assert actual == {
-        (1, 1): "history",
-        (1, 2): "history",
-        (1, 3): "train_label",
-        (1, 4): "validation_label",
+        1: (True, True),
+        2: (True, True),
+        3: (True, True),
+        4: (False, True),
     }

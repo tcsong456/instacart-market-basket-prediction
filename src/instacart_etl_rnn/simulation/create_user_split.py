@@ -6,19 +6,18 @@ def build_user_simulation_split(
     orders: DataFrame,
 ) -> DataFrame:
     """
-    Assign users to deterministic cohorts for model simulation.
+    Assign users to deterministic simulation cohorts.
 
-    Users are split into final holdout, established, new, or excluded
-    cohorts based on order history and deterministic hashing.
-    Established users are assigned to base or stacking training, while
-    new users are assigned an arrival period (t1 or t2).
+    Users are grouped by order history and assigned to final holdout,
+    established, new-user, or excluded cohorts. Established users are
+    further split into base or stacking training, while new users are
+    assigned an arrival period.
 
     Args:
         orders: Order-level DataFrame containing user_id and order_number.
 
     Returns:
-        One row per user with order history, cohort, development split,
-        and arrival period.
+        One row per user with cohort, development split, and arrival period.
     """
 
     users = (
@@ -39,7 +38,7 @@ def build_user_simulation_split(
     users = users.withColumn(
         "user_cohort",
         F.when(
-            F.col("_holdout_bucket") == 0,
+            (F.col("order_history") >= 6) & (F.col("_holdout_bucket") == 0),
             F.lit("final_holdout"),
         )
         .when(
@@ -158,92 +157,114 @@ def add_order_role(
     df: DataFrame,
     period: str,
 ) -> DataFrame:
-    """Assign each order its role at the given simulation period."""
+    """
+    Add data-availability flags for a simulation period.
 
-    PERIOD_ORDER = {
+    Marks whether each order is available for training, validation,
+    or final-holdout evaluation based on cohort, arrival period,
+    order history, and the current simulation period.
+
+    Args:
+        df: Order-level DataFrame containing cohort and order metadata.
+        period: Simulation period: initial, t1, or t2.
+
+    Returns:
+        DataFrame with current_period and availability flag columns.
+
+    Raises:
+        ValueError: If the simulation period is unsupported.
+    """
+
+    period_order = {
         "initial": 0,
         "t1": 1,
         "t2": 2,
     }
 
-    if period not in PERIOD_ORDER:
+    if period not in period_order:
         raise ValueError(f"Unsupported simulation period: {period}")
 
-    current_period = PERIOD_ORDER[period]
+    current_period = period_order[period]
 
-    established_train_offset = {
+    train_offset = {
         "initial": 3,
         "t1": 2,
         "t2": 1,
     }[period]
 
-    established_validation_offset = {
+    validation_offset = {
         "initial": 2,
         "t1": 1,
         "t2": 0,
     }[period]
 
-    established_train_order = F.col("order_history") - established_train_offset
+    evaluation_offset = {
+        "initial": 2,
+        "t1": 1,
+        "t2": 0,
+    }[period]
 
-    established_validation_order = (
-        F.col("order_history") - established_validation_offset
-    )
+    train_order = F.col("order_history") - F.lit(train_offset)
+
+    validation_order = F.col("order_history") - F.lit(validation_offset)
+
+    evaluation_order = F.col("order_history") - F.lit(evaluation_offset)
 
     is_established = F.col("user_cohort") == "established"
 
     is_new_user = F.col("user_cohort") == "new_user"
 
-    arrival_period_value = F.when(F.col("arrival_period") == "t1", F.lit(1)).when(
-        F.col("arrival_period") == "t2", F.lit(2)
-    )
+    is_final_holdout = F.col("user_cohort") == "final_holdout"
 
-    is_before_arrival = is_new_user & (arrival_period_value > F.lit(current_period))
+    arrival_period_value = F.when(
+        F.col("arrival_period") == "t1",
+        F.lit(1),
+    ).when(
+        F.col("arrival_period") == "t2",
+        F.lit(2),
+    )
 
     is_current_new_user = is_new_user & (arrival_period_value == F.lit(current_period))
 
     is_previous_new_user = is_new_user & (arrival_period_value < F.lit(current_period))
 
-    return df.withColumn("current_period", F.lit(period)).withColumn(
-        "order_role",
-        F.when(
-            is_established & (F.col("order_number") < established_train_order),
-            F.lit("history"),
+    is_established_train = is_established & (F.col("order_number") <= train_order)
+
+    is_established_validation = is_established & (
+        F.col("order_number") <= validation_order
+    )
+
+    is_current_new_train = is_current_new_user & (
+        F.col("order_number") <= F.col("order_history") - 1
+    )
+
+    is_current_new_validation = is_current_new_user & (
+        F.col("order_number") <= F.col("order_history")
+    )
+
+    is_previous_new_train = is_previous_new_user & (
+        F.col("order_number") <= F.col("order_history")
+    )
+
+    is_holdout_evaluation = is_final_holdout & (
+        F.col("order_number") <= evaluation_order
+    )
+
+    return (
+        df.withColumn(
+            "current_period",
+            F.lit(period),
         )
-        .when(
-            is_established & (F.col("order_number") == established_train_order),
-            F.lit("train_label"),
+        .withColumn(
+            "is_train_available",
+            (is_established_train | is_current_new_train | is_previous_new_train),
         )
-        .when(
-            is_established & (F.col("order_number") == established_validation_order),
-            F.lit("validation_label"),
+        .withColumn(
+            "is_validation_available",
+            (is_established_validation | is_current_new_validation),
         )
-        .when(
-            is_established & (F.col("order_number") > established_validation_order),
-            F.lit("future"),
+        .withColumn(
+            "is_evaluation_available",
+            is_holdout_evaluation,
         )
-        .when(
-            is_before_arrival,
-            F.lit("future"),
-        )
-        .when(
-            is_current_new_user & (F.col("order_number") < F.col("order_history") - 1),
-            F.lit("history"),
-        )
-        .when(
-            is_current_new_user & (F.col("order_number") == F.col("order_history") - 1),
-            F.lit("train_label"),
-        )
-        .when(
-            is_current_new_user & (F.col("order_number") == F.col("order_history")),
-            F.lit("validation_label"),
-        )
-        .when(
-            is_previous_new_user & (F.col("order_number") < F.col("order_history")),
-            F.lit("history"),
-        )
-        .when(
-            is_previous_new_user & (F.col("order_number") == F.col("order_history")),
-            F.lit("train_label"),
-        )
-        .otherwise(F.lit(None).cast("string")),
     )

@@ -58,18 +58,20 @@ def test_run_user_data_job(mocker):
     manager.attach_mock(mocked_validate, "validate")
     manager.attach_mock(mocked_write, "write")
 
-    run_user_data_job(spark=spark, path="silver", contract_path="contracts")
+    run_user_data_job(
+        spark=spark, path="silver", contract_path="contracts", mode="train"
+    )
 
     assert manager.mock_calls == [
-        call.join("silver", "order_products"),
-        call.read("silver/order_products", spark),
+        call.join("silver", "order_products_train"),
+        call.read("silver/order_products_train", spark),
         call.build_order(order_products),
         call.build_user(order_group_data),
         call.join("contracts", "user_data.yaml"),
         call.load("contracts/user_data.yaml"),
         call.validate(user_data, contract=contract),
-        call.join("silver", "user_data"),
-        call.write("silver/user_data", user_data),
+        call.join("silver", "user_data_train"),
+        call.write("silver/user_data_train", user_data),
     ]
     user_data.persist.assert_called_once_with(StorageLevel.MEMORY_AND_DISK)
 
@@ -115,9 +117,7 @@ def test_run_user_data_job_does_not_write_when_user_build_fails(
         match="user build failed",
     ):
         run_user_data_job(
-            spark=spark,
-            path="silver",
-            contract_path="contracts",
+            spark=spark, path="silver", contract_path="contracts", mode="train"
         )
 
     mocked_build_user.assert_called_once_with(
@@ -176,11 +176,34 @@ def test_run_user_data_job_does_not_write_when_validation_fails(
 
     with pytest.raises(DataValidationError):
         run_user_data_job(
-            spark=spark,
-            path="silver",
-            contract_path="contracts",
+            spark=spark, path="silver", contract_path="contracts", mode="train"
         )
 
     mocked_validate.assert_called_once_with(user_group_df, contract=contract)
 
     mocked_write.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "invalid",
+        "training",
+        "test",
+        "",
+    ],
+)
+def test_run_user_data_job_rejects_invalid_mode(
+    spark,
+    mode,
+):
+    with pytest.raises(
+        ValueError,
+        match="mode must be either train or validation or evaluation",
+    ):
+        run_user_data_job(
+            spark=spark,
+            path="gs://bucket/data",
+            contract_path="gs://bucket/contracts",
+            mode=mode,
+        )

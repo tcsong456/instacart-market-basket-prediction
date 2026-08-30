@@ -17,6 +17,9 @@ def parse_args():
     parser.add_argument("--min-word-freq", default=5, type=int)
     parser.add_argument("--product-name-length", default=50, type=int)
     parser.add_argument("--encode-length", default=50, type=int)
+    parser.add_argument(
+        "--mode", choices=["train", "validation", "evaluation"], required=True
+    )
 
     return parser.parse_args()
 
@@ -39,6 +42,7 @@ def main() -> None:
             min_word_freq=args.min_word_freq,
             product_name_length=args.product_name_length,
             encode_length=args.encode_length,
+            mode=args.mode,
         )
     except Exception:
         logger.exception("Build product training data failed!")

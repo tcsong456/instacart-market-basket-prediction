@@ -7,6 +7,7 @@ def test_main_runs_aisle_training_job_and_stops_spark(mocker):
     args.output_path = "training"
     args.contract_path = "contracts"
     args.pad_length = 30
+    args.mode = "train"
 
     spark = mocker.Mock()
 
@@ -37,6 +38,7 @@ def test_main_runs_aisle_training_job_and_stops_spark(mocker):
         output_path="training",
         contract_path="contracts",
         pad_length=30,
+        mode="train",
     )
 
     spark.stop.assert_called_once_with()

@@ -25,6 +25,7 @@ gcloud dataproc jobs submit pyspark \
     --py-files=src.zip \
     -- \
     --input-path="gs://instacart-silver-fc45ebb3/$folder/$period" \
-    --output-path="gs://instacart-silver-fc45ebb3/snapshots/$folder/$period" \
+    --output-path="gs://instacart-silver-fc45ebb3/snapshots/$folder" \
     --contract-path="gs://instacart-raw-fc45ebb3/contracts" \
-    --mode=$mode
+    --mode=$mode \
+    --period=$period

@@ -9,6 +9,7 @@ def test_main_runs_product_history_job_and_stops_spark(
         data_path="bronze",
         output_path="gold",
         contract_path="contracts",
+        mode="train",
     )
 
     spark = mocker.Mock(name="spark")
@@ -44,6 +45,7 @@ def test_main_runs_product_history_job_and_stops_spark(
         data_path="bronze",
         output_path="gold",
         contract_path="contracts",
+        mode="train",
     )
 
     spark.stop.assert_called_once_with()

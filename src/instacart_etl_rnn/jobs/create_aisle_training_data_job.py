@@ -12,11 +12,12 @@ def run_aisle_training_data_job(
     spark: SparkSession,
     input_path: str,
     output_path: str,
+    mode: str,
     contract_path: str,
     pad_length: int = 30,
 ) -> None:
     aisle_history_data = read_parquet(
-        join_path(input_path, "aisle_history_data"), spark
+        join_path(input_path, f"aisle_history_data_{mode}"), spark
     )
     aisle_training_data = parse_aisle_seq_data(aisle_history_data, pad_length)
     aisle_training_data.persist(StorageLevel.MEMORY_AND_DISK)
@@ -26,7 +27,7 @@ def run_aisle_training_data_job(
         validate_dataset(aisle_training_data, contract=contract)
 
         write_parquet(
-            join_path(output_path, "aisle_training_data"), aisle_training_data
+            join_path(output_path, f"aisle_training_data_{mode}"), aisle_training_data
         )
     finally:
         aisle_training_data.unpersist()

@@ -83,7 +83,7 @@ schema:
     constraints:
       allowed_values:
         - train
-        - test
+        - prior
 
 derived_fields:
   - name: order_ids_length

@@ -71,14 +71,15 @@ def test_run_aisle_history_job_builds_validates_and_writes(
         data_path="bronze",
         output_path=tmp_path / "gold",
         contract_path="contracts",
+        mode="validation",
     )
 
     validated_df = mocked_validate.call_args.args[0]
     written_path, written_df = mocked_write.call_args.args
 
     assert manager.mock_calls == [
-        call.join("silver", "user_data"),
-        call.read("silver/user_data", spark),
+        call.join("silver", "user_data_validation"),
+        call.read("silver/user_data_validation", spark),
         call.parse(user_data),
         call.build(parsed_df),
         call.join("bronze", "products"),
@@ -86,7 +87,7 @@ def test_run_aisle_history_job_builds_validates_and_writes(
         call.join("contracts", "aisle_history_data.yaml"),
         call.load("contracts/aisle_history_data.yaml"),
         call.validate(validated_df, contract=contract),
-        call.join(tmp_path / "gold", "aisle_history_data"),
+        call.join(tmp_path / "gold", "aisle_history_data_validation"),
         call.write(written_path, written_df),
     ]
 
@@ -102,7 +103,7 @@ def test_run_aisle_history_job_builds_validates_and_writes(
     assert actual[(1, 24)]["eval_set"] == "train"
     assert "department_id" not in aisle_history_df.columns
 
-    assert written_path == f"{tmp_path}/gold/aisle_history_data"
+    assert written_path == f"{tmp_path}/gold/aisle_history_data_validation"
     assert validated_df.collect() == written_df.collect()
 
 
@@ -157,6 +158,7 @@ def test_run_aisle_history_job_does_not_write_when_validation_fails(
             data_path="bronze",
             output_path="gold",
             contract_path="contracts",
+            mode="validation",
         )
 
     mocked_write.assert_not_called()

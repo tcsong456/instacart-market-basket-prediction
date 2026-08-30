@@ -4,56 +4,89 @@ from instacart_etl_rnn.simulation.create_user_split import add_order_role
 
 
 @pytest.mark.parametrize(
-    ("period", "expected_roles"),
+    ("period", "expected"),
     [
         (
             "initial",
             {
-                1: "history",
-                2: "history",
-                3: "train_label",
-                4: "validation_label",
-                5: "future",
-                6: "future",
+                1: (True, True, False),
+                2: (True, True, False),
+                3: (True, True, False),
+                4: (False, True, False),
+                5: (False, False, False),
+                6: (False, False, False),
             },
         ),
         (
             "t1",
             {
-                1: "history",
-                2: "history",
-                3: "history",
-                4: "train_label",
-                5: "validation_label",
-                6: "future",
+                1: (True, True, False),
+                2: (True, True, False),
+                3: (True, True, False),
+                4: (True, True, False),
+                5: (False, True, False),
+                6: (False, False, False),
             },
         ),
         (
             "t2",
             {
-                1: "history",
-                2: "history",
-                3: "history",
-                4: "history",
-                5: "train_label",
-                6: "validation_label",
+                1: (True, True, False),
+                2: (True, True, False),
+                3: (True, True, False),
+                4: (True, True, False),
+                5: (True, True, False),
+                6: (False, True, False),
             },
         ),
     ],
 )
-def test_add_order_role_assigns_established_user_roles(
+def test_add_order_role_for_established_user(
     spark,
     period,
-    expected_roles,
+    expected,
+):
+    df = spark.createDataFrame(
+        [(1, order_number, 6, "established", None) for order_number in range(1, 7)],
+        """
+        user_id int,
+        order_number int,
+        order_history int,
+        user_cohort string,
+        arrival_period string
+        """,
+    )
+
+    result = add_order_role(df, period)
+
+    actual = {
+        row.order_number: (
+            row.is_train_available,
+            row.is_validation_available,
+            row.is_evaluation_available,
+        )
+        for row in result.collect()
+    }
+
+    assert actual == expected
+
+
+@pytest.mark.parametrize(
+    ("arrival_period", "period"),
+    [
+        ("t1", "t1"),
+        ("t2", "t2"),
+    ],
+)
+def test_add_order_role_current_new_user(
+    spark,
+    arrival_period,
+    period,
 ):
     df = spark.createDataFrame(
         [
-            (1, 1, 6, "established", None),
-            (1, 2, 6, "established", None),
-            (1, 3, 6, "established", None),
-            (1, 4, 6, "established", None),
-            (1, 5, 6, "established", None),
-            (1, 6, 6, "established", None),
+            (1, order_number, 4, "new_user", arrival_period)
+            for order_number in range(1, 5)
         ],
         """
         user_id int,
@@ -67,121 +100,137 @@ def test_add_order_role_assigns_established_user_roles(
     result = add_order_role(df, period)
 
     actual = {
-        row["order_number"]: row["order_role"]
-        for row in result.select(
-            "order_number",
-            "order_role",
-        ).collect()
+        row.order_number: (
+            row.is_train_available,
+            row.is_validation_available,
+            row.is_evaluation_available,
+        )
+        for row in result.collect()
     }
 
-    assert actual == expected_roles
+    assert actual == {
+        1: (True, True, False),
+        2: (True, True, False),
+        3: (True, True, False),
+        4: (False, True, False),
+    }
 
-    assert {
-        row["current_period"]
-        for row in result.select("current_period").distinct().collect()
-    } == {period}
+
+def test_add_order_role_previous_new_user_is_train_available_only(
+    spark,
+):
+    df = spark.createDataFrame(
+        [(1, order_number, 4, "new_user", "t1") for order_number in range(1, 5)],
+        """
+        user_id int,
+        order_number int,
+        order_history int,
+        user_cohort string,
+        arrival_period string
+        """,
+    )
+
+    result = add_order_role(df, "t2")
+
+    for row in result.collect():
+        assert row.is_train_available is True
+        assert row.is_validation_available is False
+        assert row.is_evaluation_available is False
 
 
-def test_add_order_role_marks_new_user_before_arrival_as_future(
+@pytest.mark.parametrize(
+    ("period", "available_orders"),
+    [
+        ("initial", {1, 2, 3, 4}),
+        ("t1", {1, 2, 3, 4, 5}),
+        ("t2", {1, 2, 3, 4, 5, 6}),
+    ],
+)
+def test_add_order_role_final_holdout_evaluation_availability(
+    spark,
+    period,
+    available_orders,
+):
+    df = spark.createDataFrame(
+        [(1, order_number, 6, "final_holdout", None) for order_number in range(1, 7)],
+        """
+        user_id int,
+        order_number int,
+        order_history int,
+        user_cohort string,
+        arrival_period string
+        """,
+    )
+
+    result = add_order_role(df, period)
+
+    actual = {
+        row.order_number for row in result.collect() if row.is_evaluation_available
+    }
+
+    assert actual == available_orders
+
+    for row in result.collect():
+        assert row.is_train_available is False
+        assert row.is_validation_available is False
+
+
+def test_add_order_role_excluded_user_has_no_available_orders(
     spark,
 ):
     df = spark.createDataFrame(
         [
-            (10, 1, 4, "new_user", "t2"),
-            (10, 2, 4, "new_user", "t2"),
-            (10, 3, 4, "new_user", "t2"),
-            (10, 4, 4, "new_user", "t2"),
+            (1, 1, 2, "excluded", None),
+            (1, 2, 2, "excluded", None),
         ],
-        [
-            "user_id",
-            "order_number",
-            "order_history",
-            "user_cohort",
-            "arrival_period",
-        ],
+        """
+        user_id int,
+        order_number int,
+        order_history int,
+        user_cohort string,
+        arrival_period string
+        """,
     )
 
-    result = add_order_role(df, period="t1")
+    result = add_order_role(df, "initial")
 
-    actual = {row["order_number"]: row["order_role"] for row in result.collect()}
-
-    assert actual == {
-        1: "future",
-        2: "future",
-        3: "future",
-        4: "future",
-    }
+    for row in result.collect():
+        assert row.is_train_available is False
+        assert row.is_validation_available is False
+        assert row.is_evaluation_available is False
 
 
-def test_add_order_role_assigns_current_new_user_roles(
+@pytest.mark.parametrize(
+    "period",
+    ["initial", "t1", "t2"],
+)
+def test_add_order_role_sets_current_period(
     spark,
+    period,
 ):
     df = spark.createDataFrame(
-        [
-            (10, 1, 4, "new_user", "t1"),
-            (10, 2, 4, "new_user", "t1"),
-            (10, 3, 4, "new_user", "t1"),
-            (10, 4, 4, "new_user", "t1"),
-        ],
-        [
-            "user_id",
-            "order_number",
-            "order_history",
-            "user_cohort",
-            "arrival_period",
-        ],
+        [(1, 1, 6, "established", None)],
+        """
+        user_id int,
+        order_number int,
+        order_history int,
+        user_cohort string,
+        arrival_period string
+        """,
     )
 
-    result = add_order_role(df, period="t1")
+    result = add_order_role(df, period)
 
-    actual = {row["order_number"]: row["order_role"] for row in result.collect()}
-
-    assert actual == {
-        1: "history",
-        2: "history",
-        3: "train_label",
-        4: "validation_label",
-    }
-
-
-def test_add_order_role_moves_previous_new_user_validation_into_train(
-    spark,
-):
-    df = spark.createDataFrame(
-        [
-            (10, 1, 4, "new_user", "t1"),
-            (10, 2, 4, "new_user", "t1"),
-            (10, 3, 4, "new_user", "t1"),
-            (10, 4, 4, "new_user", "t1"),
-        ],
-        [
-            "user_id",
-            "order_number",
-            "order_history",
-            "user_cohort",
-            "arrival_period",
-        ],
-    )
-
-    result = add_order_role(df, period="t2")
-
-    actual = {row["order_number"]: row["order_role"] for row in result.collect()}
-
-    assert actual == {
-        1: "history",
-        2: "history",
-        3: "history",
-        4: "train_label",
-    }
+    assert result.first().current_period == period
 
 
 def test_add_order_role_rejects_unsupported_period(spark):
     df = spark.createDataFrame(
-        [],
+        [(1, 1, 6, "established", None)],
         """
-        user_id long,
-        order_number long,
-        order_history long,
+        user_id int,
+        order_number int,
+        order_history int,
         user_cohort string,
         arrival_period string
         """,
@@ -191,4 +240,4 @@ def test_add_order_role_rejects_unsupported_period(spark):
         ValueError,
         match="Unsupported simulation period: t3",
     ):
-        add_order_role(df, period="t3")
+        add_order_role(df, "t3")

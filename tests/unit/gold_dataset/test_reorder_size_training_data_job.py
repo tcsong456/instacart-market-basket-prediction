@@ -71,18 +71,19 @@ def test_run_reorder_size_training_data_runs_pipeline(
         output_path="gold",
         contract_path="contracts",
         pad_length=5,
+        mode="train",
     )
 
     assert manager.mock_calls == [
-        call.join("silver", "user_data"),
-        call.read("silver/user_data", spark),
+        call.join("silver", "user_data_train"),
+        call.read("silver/user_data_train", spark),
         call.transform(user_data),
         call.pad(transformed_data, 5),
         call.join("contracts", "reorder_size_training_data.yaml"),
         call.load("contracts/reorder_size_training_data.yaml"),
         call.validate(reorder_size_data, contract=contract),
-        call.join("gold", "reorder_size_training_data"),
-        call.write("gold/reorder_size_training_data", reorder_size_data),
+        call.join("gold", "reorder_size_training_data_train"),
+        call.write("gold/reorder_size_training_data_train", reorder_size_data),
     ]
 
     df = mocked_validate.call_args.args[0]
@@ -144,6 +145,7 @@ def test_run_reorder_size_training_data_unpersists_when_validation_fails(
             output_path="gold",
             contract_path="contracts",
             pad_length=5,
+            mode="train",
         )
 
     reorder_size_data.persist.assert_called_once_with(StorageLevel.MEMORY_AND_DISK)

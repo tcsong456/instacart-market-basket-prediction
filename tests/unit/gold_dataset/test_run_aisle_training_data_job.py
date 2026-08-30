@@ -61,17 +61,18 @@ def test_run_aisle_training_data_job_runs_pipeline(
         output_path="training",
         contract_path="contracts",
         pad_length=40,
+        mode="train",
     )
 
     assert manager.mock_calls == [
-        call.join("gold", "aisle_history_data"),
-        call.read("gold/aisle_history_data", spark),
+        call.join("gold", "aisle_history_data_train"),
+        call.read("gold/aisle_history_data_train", spark),
         call.parse(aisle_history_data, 40),
         call.join("contracts", "aisle_training_data.yaml"),
         call.load("contracts/aisle_training_data.yaml"),
         call.validate(aisle_training_data, contract=contract),
-        call.join("training", "aisle_training_data"),
-        call.write("training/aisle_training_data", aisle_training_data),
+        call.join("training", "aisle_training_data_train"),
+        call.write("training/aisle_training_data_train", aisle_training_data),
     ]
 
     df = mocked_validate.call_args.args[0]
@@ -128,6 +129,7 @@ def test_run_aisle_training_data_job_unpersists_when_validation_fails(
             output_path="training",
             contract_path="contracts",
             pad_length=40,
+            mode="train",
         )
 
     aisle_training_data.persist.assert_called_once_with(StorageLevel.MEMORY_AND_DISK)

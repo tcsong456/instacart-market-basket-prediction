@@ -14,6 +14,9 @@ def parse_args():
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--contract-path", required=True)
+    parser.add_argument(
+        "--mode", required=True, choices=["train", "validation", "evaluation"]
+    )
 
     return parser.parse_args()
 
@@ -33,6 +36,7 @@ def main() -> None:
             data_path=args.data_path,
             output_path=args.output_path,
             contract_path=args.contract_path,
+            mode=args.mode,
         )
     except Exception:
         logger.exception("Build product history data failed!")

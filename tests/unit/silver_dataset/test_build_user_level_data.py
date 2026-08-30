@@ -100,7 +100,7 @@ def test_build_user_level_data_builds_order_sequences(spark):
     assert user_2["order_ids"] == "201"
     assert user_2["order_numbers"] == "1"
     assert user_2["product_ids"] == "50_150_80"
-    assert user_2["eval_set"] == "test"
+    assert user_2["eval_set"] == "prior"
 
     assert "orders" not in result.columns
 

@@ -32,8 +32,9 @@ def run_aisle_history_job(
     data_path: str,
     output_path: str,
     contract_path: str,
+    mode: str,
 ) -> None:
-    user_data = read_parquet(join_path(input_path, "user_data"), spark)
+    user_data = read_parquet(join_path(input_path, f"user_data_{mode}"), spark)
 
     df = parse_seq(user_data)
     df = build_aisle_history_data(df)
@@ -51,6 +52,8 @@ def run_aisle_history_job(
         contract = load_contract(join_path(contract_path, "aisle_history_data.yaml"))
         validate_dataset(aisle_history_data, contract=contract)
 
-        write_parquet(join_path(output_path, "aisle_history_data"), aisle_history_data)
+        write_parquet(
+            join_path(output_path, f"aisle_history_data_{mode}"), aisle_history_data
+        )
     finally:
         aisle_history_data.unpersist()

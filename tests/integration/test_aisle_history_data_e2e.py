@@ -28,7 +28,7 @@ def test_run_aisle_history_job_end_to_end(spark, tmp_path):
                 "15",
                 "-1.0",
                 "1",
-                "test",
+                "prior",
             ),
         ],
         """
@@ -64,7 +64,7 @@ def test_run_aisle_history_job_end_to_end(spark, tmp_path):
     data_path = tmp_path / "bronze"
     output_path = tmp_path / "gold"
 
-    user_data.write.parquet(str(input_path / "user_data"))
+    user_data.write.parquet(str(input_path / "user_data_train"))
 
     products.write.parquet(str(data_path / "products"))
 
@@ -74,9 +74,10 @@ def test_run_aisle_history_job_end_to_end(spark, tmp_path):
         data_path=data_path,
         output_path=output_path,
         contract_path=CONTRACT_PATH,
+        mode="train",
     )
 
-    result = spark.read.parquet(str(output_path / "aisle_history_data"))
+    result = spark.read.parquet(str(output_path / "aisle_history_data_train"))
 
     actual = {
         (
@@ -143,7 +144,7 @@ def test_run_aisle_history_job_end_to_end(spark, tmp_path):
         "user_id": 2,
         "aisle_id": 40,
         "department_id": 4,
-        "eval_set": "test",
+        "eval_set": "prior",
         "is_ordered_history": "1",
         "position_in_order": "1",
         "num_products_from_aisle": "2",
@@ -158,7 +159,7 @@ def test_run_aisle_history_job_end_to_end(spark, tmp_path):
         "user_id": 2,
         "aisle_id": 50,
         "department_id": 5,
-        "eval_set": "test",
+        "eval_set": "prior",
         "is_ordered_history": "1",
         "position_in_order": "2",
         "num_products_from_aisle": "1",

@@ -1,6 +1,8 @@
 set -euo pipefail
 
 file=$1
+period=$2
+mode=$3
 
 if [[ "$file" == "raw" ]]; then
     folder="curated"
@@ -17,12 +19,12 @@ gcloud storage rsync -r src/instacart_etl_rnn/contracts $contract_path
 )
 
 gcloud dataproc jobs submit pyspark \
-    src/instacart_etl_rnn/cli/build_aisle_training_dataset.py \
+    src/instacart_etl_rnn/cli/build_user_product_count_dataset.py \
     --cluster=instacart-dataproc-cluster-fc45ebb3 \
     --region=europe-west1 \
     --py-files=src.zip \
     -- \
-    --input-path="gs://instacart-gold-fc45ebb3/$folder" \
-    --output-path="gs://instacart-gold-fc45ebb3/$folder" \
+    --input-path="gs://instacart-silver-fc45ebb3/snapshots/$folder/$period" \
+    --output-path="gs://instacart-gold-fc45ebb3/training/$folder/$period" \
     --contract-path="gs://instacart-raw-fc45ebb3/contracts" \
-    --pad-length=100
+    --mode=$mode

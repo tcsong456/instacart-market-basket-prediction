@@ -14,6 +14,9 @@ def parse_args():
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--contract-path", required=True)
     parser.add_argument("--pad-length", default=30, type=int)
+    parser.add_argument(
+        "--mode", choices=["train", "validation", "evaluation"], required=True
+    )
 
     return parser.parse_args()
 
@@ -33,6 +36,7 @@ def main() -> None:
             output_path=args.output_path,
             contract_path=args.contract_path,
             pad_length=args.pad_length,
+            mode=args.mode,
         )
     except Exception:
         logger.exception("Build aisle training data failed!")

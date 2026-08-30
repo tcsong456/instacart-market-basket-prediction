@@ -3,34 +3,24 @@ from instacart_etl_rnn.simulation.create_order_product_split import (
 )
 
 
-def test_select_base_model_users_returns_expected_rows(spark):
+def test_select_base_model_users(spark):
     df = spark.createDataFrame(
         [
-            (1, "established", "base_train", 10),
-            (2, "established", "stacking_train", 20),
-            (3, "new_user", None, 30),
+            (1, "established", "base_train"),
+            (2, "established", "stacking_train"),
+            (3, "new_user", None),
+            (4, "final_holdout", None),
+            (5, "excluded", None),
         ],
-        [
-            "user_id",
-            "user_cohort",
-            "development_split",
-            "order_number",
-        ],
+        """
+        user_id int,
+        user_cohort string,
+        development_split string
+        """,
     )
 
     result = select_base_model_users(df)
 
-    actual = {
-        (
-            row["user_id"],
-            row["user_cohort"],
-            row["development_split"],
-            row["order_number"],
-        )
-        for row in result.collect()
-    }
+    actual = {row.user_id for row in result.collect()}
 
-    assert actual == {
-        (1, "established", "base_train", 10),
-        (3, "new_user", None, 30),
-    }
+    assert actual == {1, 3, 4}

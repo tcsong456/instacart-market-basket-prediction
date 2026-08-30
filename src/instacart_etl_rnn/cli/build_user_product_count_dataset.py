@@ -13,6 +13,7 @@ def parse_args():
     parser.add_argument("--input-path", required=True)
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--contract-path", required=True)
+    parser.add_argument("--mode", required=True)
 
     return parser.parse_args()
 
@@ -31,6 +32,7 @@ def main() -> None:
             input_path=args.input_path,
             output_path=args.output_path,
             contract_path=args.contract_path,
+            mode=args.mode,
         )
     except Exception:
         logger.exception("Build user product count data failed!")
