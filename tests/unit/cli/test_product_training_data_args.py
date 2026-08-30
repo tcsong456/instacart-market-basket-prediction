@@ -18,6 +18,8 @@ def test_parse_args_parses_required_arguments_and_defaults(
             "gold",
             "--contract-path",
             "contracts",
+            "--mode",
+            "train",
         ],
     )
 
@@ -27,6 +29,7 @@ def test_parse_args_parses_required_arguments_and_defaults(
     assert args.raw_path == "bronze"
     assert args.output_path == "gold"
     assert args.contract_path == "contracts"
+    assert args.mode == "train"
 
     assert args.min_word_freq == 5
     assert args.product_name_length == 50
@@ -48,6 +51,8 @@ def test_parse_args_parses_optional_arguments(
             "gold",
             "--contract-path",
             "contracts",
+            "--mode",
+            "evaluation",
             "--min-word-freq",
             "10",
             "--product-name-length",
@@ -59,6 +64,7 @@ def test_parse_args_parses_optional_arguments(
 
     args = parse_args()
 
+    assert args.mode == "evaluation"
     assert args.min_word_freq == 10
     assert args.product_name_length == 40
     assert args.encode_length == 60
@@ -77,6 +83,8 @@ def test_parse_args_raises_when_required_argument_is_missing(
             "gold",
             "--contract-path",
             "contracts",
+            "--mode",
+            "train",
         ],
     )
 

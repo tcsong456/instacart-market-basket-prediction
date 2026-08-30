@@ -54,13 +54,13 @@ schema:
     type: string
     nullable: false
 
-  - name: train_eval_set
+  - name: eval_set
     type: string
     nullable: false
     constraints:
       allowed_values:
         - train
-        - test
+        - prior
   
   - name: is_ordered_history
     type: string
@@ -199,14 +199,6 @@ rules:
     expression: >
       order_numbers_length = 1
       OR order_numbers_length - ordered_history_length = 1
-  
-  - name: train_rows_have_binary_label
-    expression: >
-      train_eval_set <> 'train' OR label IN (0, 1)
-  
-  - name: test_rows_have_unknown_label
-    expression: >
-      train_eval_set <> 'test' OR label = -1
   
   - name: unordered_product_position_is_zero
     expression: >

@@ -1,183 +1,288 @@
 import pytest
 
 from instacart_etl_rnn.jobs.create_period_split_data_job import (
+    COLUMNS,
     run_order_products_split_job,
 )
 
+MODULE_PATH = "instacart_etl_rnn.jobs.create_period_split_data_job"
 
-@pytest.mark.parametrize(
-    ("mode"),
-    [
-        ("base_train"),
-        ("stacking_train"),
-    ],
-)
-def test_run_order_products_split_job_runs_expected_pipeline(
+
+def test_run_order_products_split_job_base_train(
     mocker,
-    mode,
+    spark,
 ):
-    module_path = "instacart_etl_rnn.jobs.create_period_split_data_job"
+    order_products = mocker.Mock(name="order_products")
 
-    spark = mocker.sentinel.spark
-    order_products = mocker.sentinel.order_products
-    selected_model = mocker.sentinel.selected_model
+    model = mocker.Mock(name="base_model_users")
 
-    history = mocker.Mock(name="history")
-    train_label = mocker.Mock(name="train_label")
-    validation_label = mocker.Mock(name="validation_label")
+    train_history = mocker.Mock(name="train_history")
+    evaluation_history = mocker.Mock(name="evaluation_history")
+    validation_history = mocker.Mock(name="validation_history")
 
-    history_selected = mocker.sentinel.history_selected
-    train_selected = mocker.sentinel.trained_selected
-    validation_selected = mocker.sentinel.validation_selected
+    train_output = mocker.sentinel.train_output
+    evaluation_output = mocker.sentinel.evaluation_output
+    validation_output = mocker.sentinel.validation_output
 
-    history.select.return_value = history_selected
-    train_label.select.return_value = train_selected
-    validation_label.select.return_value = validation_selected
+    train_history.select.return_value = train_output
+    evaluation_history.select.return_value = evaluation_output
+    validation_history.select.return_value = validation_output
 
-    base_contract = mocker.sentinel.base_contract
+    base_contract = {
+        "dataset": {
+            "name": "order_products_split",
+        }
+    }
 
-    history_contract = mocker.sentinel.history_contract
-    train_contract = mocker.sentinel.train_contract
-    validation_contract = mocker.sentinel.validation_contract
-
-    mocked_join = mocker.patch(
-        f"{module_path}.join_path",
+    mock_join_path = mocker.patch(
+        f"{MODULE_PATH}.join_path",
         side_effect=lambda base, name: f"{base}/{name}",
     )
 
-    read_parquet = mocker.patch(
-        f"{module_path}.read_parquet",
+    mock_read_parquet = mocker.patch(
+        f"{MODULE_PATH}.read_parquet",
         return_value=order_products,
     )
 
-    base_selector = mocker.patch(
-        f"{module_path}.select_base_model_users",
-        return_value=selected_model,
+    mock_select_base = mocker.patch(
+        f"{MODULE_PATH}.select_base_model_users",
+        return_value=model,
     )
 
-    stacking_selector = mocker.patch(
-        f"{module_path}.select_stacking_model_users",
-        return_value=selected_model,
+    mock_select_stacking = mocker.patch(
+        f"{MODULE_PATH}.select_stacking_model_users",
     )
 
-    split_order_products_by_role = mocker.patch(
-        f"{module_path}.split_order_products_by_role",
+    mock_split = mocker.patch(
+        f"{MODULE_PATH}.split_order_products_by_role",
         return_value=(
-            history,
-            train_label,
-            validation_label,
+            train_history,
+            evaluation_history,
+            validation_history,
         ),
     )
 
-    load_contract = mocker.patch(
-        f"{module_path}.load_contract",
+    mock_load_contract = mocker.patch(
+        f"{MODULE_PATH}.load_contract",
         return_value=base_contract,
     )
 
-    build_role_contract = mocker.patch(
-        f"{module_path}.build_role_contract",
-        side_effect=[
-            history_contract,
-            train_contract,
-            validation_contract,
-        ],
+    mock_validate = mocker.patch(
+        f"{MODULE_PATH}.validate_dataset",
     )
 
-    validate_dataset = mocker.patch(
-        f"{module_path}.validate_dataset",
-    )
-
-    write_parquet = mocker.patch(
-        f"{module_path}.write_parquet",
-    )
-
-    mocker.patch(
-        f"{module_path}.COLUMNS",
-        ["user_id", "order_id"],
+    mock_write = mocker.patch(
+        f"{MODULE_PATH}.write_parquet",
     )
 
     run_order_products_split_job(
         spark=spark,
-        input_path="input",
-        output_path="output",
-        mode=mode,
-        contract_path="contracts",
+        input_path="gs://bucket/input",
+        output_path="gs://bucket/output",
+        mode="base_train",
+        period="t1",
+        contract_path="gs://bucket/contracts",
     )
 
-    join_args_list = [
-        mocker.call("input", "order_products"),
-        mocker.call("contracts", "order_products_split_base.yaml"),
+    assert mock_join_path.call_args_list == [
+        mocker.call("gs://bucket/input", "order_products"),
+        mocker.call("gs://bucket/contracts", "order_products_split_base.yaml"),
+        mocker.call("gs://bucket/output/t1", "order_products_train"),
+        mocker.call("gs://bucket/output/t1", "order_products_validation"),
+        mocker.call("gs://bucket/output/t1", "order_products_evaluation"),
     ]
 
-    read_parquet.assert_called_once_with(
-        "input/order_products",
+    mock_read_parquet.assert_called_once_with(
+        "gs://bucket/input/order_products",
         spark,
     )
 
-    if mode == "base_train":
-        base_selector.assert_called_once_with(order_products)
-        stacking_selector.assert_not_called()
-        assert mocked_join.call_args_list == [
-            *join_args_list,
-            mocker.call("output", "base_train_history"),
-            mocker.call("output", "base_train_train_label"),
-            mocker.call("output", "base_train_validation_label"),
-        ]
-    else:
-        stacking_selector.assert_called_once_with(order_products)
-        base_selector.assert_not_called()
-        assert mocked_join.call_args_list == [
-            *join_args_list,
-            mocker.call("output", "stacking_train_history"),
-            mocker.call("output", "stacking_train_train_label"),
-            mocker.call("output", "stacking_train_validation_label"),
-        ]
-
-    split_order_products_by_role.assert_called_once_with(
-        selected_model,
+    mock_select_base.assert_called_once_with(
+        order_products,
     )
 
-    load_contract.assert_called_once_with(
-        "contracts/order_products_split_base.yaml",
+    mock_select_stacking.assert_not_called()
+
+    mock_split.assert_called_once_with(
+        model,
     )
 
-    assert build_role_contract.call_args_list == [
-        mocker.call(base_contract, "history"),
-        mocker.call(base_contract, "train_label"),
-        mocker.call(base_contract, "validation_label"),
+    mock_load_contract.assert_called_once_with(
+        "gs://bucket/contracts/order_products_split_base.yaml",
+    )
+
+    train_history.select.assert_called_once_with(COLUMNS)
+    evaluation_history.select.assert_called_once_with(COLUMNS)
+    validation_history.select.assert_called_once_with(COLUMNS)
+
+    assert mock_validate.call_count == 3
+
+    assert mock_validate.call_args_list == [
+        mocker.call(
+            train_output,
+            contract={
+                "dataset": {
+                    "name": "order_products_train",
+                }
+            },
+        ),
+        mocker.call(
+            validation_output,
+            contract={
+                "dataset": {
+                    "name": "order_products_validation",
+                }
+            },
+        ),
+        mocker.call(
+            evaluation_output,
+            contract={
+                "dataset": {
+                    "name": "order_products_evaluation",
+                }
+            },
+        ),
     ]
 
-    assert validate_dataset.call_args_list == [
+    assert mock_write.call_args_list == [
         mocker.call(
-            history,
-            contract=history_contract,
+            "gs://bucket/output/t1/order_products_train",
+            train_output,
         ),
         mocker.call(
-            train_label,
-            contract=train_contract,
+            "gs://bucket/output/t1/order_products_validation",
+            validation_output,
         ),
         mocker.call(
-            validation_label,
-            contract=validation_contract,
+            "gs://bucket/output/t1/order_products_evaluation",
+            evaluation_output,
         ),
     ]
 
-    history.select.assert_called_once_with(["user_id", "order_id"])
-    train_label.select.assert_called_once_with(["user_id", "order_id"])
-    validation_label.select.assert_called_once_with(["user_id", "order_id"])
 
-    assert write_parquet.call_args_list == [
+def test_run_order_products_split_job_stacking_train(
+    mocker,
+    spark,
+):
+    order_products = mocker.Mock(name="order_products")
+
+    model = mocker.Mock(name="stacking_model_users")
+
+    train_history = mocker.Mock(name="train_history")
+    evaluation_history = mocker.Mock(name="evaluation_history")
+    validation_history = mocker.Mock(name="validation_history")
+
+    train_output = mocker.sentinel.train_output
+    validation_output = mocker.sentinel.validation_output
+
+    train_history.select.return_value = train_output
+    validation_history.select.return_value = validation_output
+
+    base_contract = {
+        "dataset": {
+            "name": "order_products_split",
+        }
+    }
+
+    mocker.patch(
+        f"{MODULE_PATH}.join_path",
+        side_effect=lambda base, name: f"{base}/{name}",
+    )
+
+    mock_read_parquet = mocker.patch(
+        f"{MODULE_PATH}.read_parquet",
+        return_value=order_products,
+    )
+
+    mock_select_base = mocker.patch(
+        f"{MODULE_PATH}.select_base_model_users",
+    )
+
+    mock_select_stacking = mocker.patch(
+        f"{MODULE_PATH}.select_stacking_model_users",
+        return_value=model,
+    )
+
+    mock_split = mocker.patch(
+        f"{MODULE_PATH}.split_order_products_by_role",
+        return_value=(
+            train_history,
+            evaluation_history,
+            validation_history,
+        ),
+    )
+
+    mocker.patch(
+        f"{MODULE_PATH}.load_contract",
+        return_value=base_contract,
+    )
+
+    mock_validate = mocker.patch(
+        f"{MODULE_PATH}.validate_dataset",
+    )
+
+    mock_write = mocker.patch(
+        f"{MODULE_PATH}.write_parquet",
+    )
+
+    run_order_products_split_job(
+        spark=spark,
+        input_path="gs://bucket/input",
+        output_path="gs://bucket/output",
+        mode="stacking_train",
+        period="t1",
+        contract_path="gs://bucket/contracts",
+    )
+
+    mock_read_parquet.assert_called_once_with(
+        "gs://bucket/input/order_products",
+        spark,
+    )
+
+    mock_select_base.assert_not_called()
+
+    mock_select_stacking.assert_called_once_with(
+        order_products,
+    )
+
+    mock_split.assert_called_once_with(
+        model,
+    )
+
+    train_history.select.assert_called_once_with(COLUMNS)
+    validation_history.select.assert_called_once_with(COLUMNS)
+
+    evaluation_history.select.assert_not_called()
+
+    assert mock_validate.call_count == 2
+
+    assert mock_validate.call_args_list == [
         mocker.call(
-            f"output/{mode}_history",
-            history_selected,
+            train_output,
+            contract={
+                "dataset": {
+                    "name": "order_products_train",
+                }
+            },
         ),
         mocker.call(
-            f"output/{mode}_train_label",
-            train_selected,
+            validation_output,
+            contract={
+                "dataset": {
+                    "name": "order_products_validation",
+                }
+            },
+        ),
+    ]
+
+    assert mock_write.call_args_list == [
+        mocker.call(
+            "gs://bucket/output/stacking_train/order_products_train",
+            train_output,
         ),
         mocker.call(
-            f"output/{mode}_validation_label",
-            validation_selected,
+            "gs://bucket/output/stacking_train/order_products_validation",
+            validation_output,
         ),
     ]
 
@@ -185,18 +290,16 @@ def test_run_order_products_split_job_runs_expected_pipeline(
 @pytest.mark.parametrize(
     "mode",
     [
-        "base_model",
-        "stack_model",
         "invalid",
+        "train",
+        "evaluation",
         "",
     ],
 )
 def test_run_order_products_split_job_rejects_invalid_mode(
-    mocker,
+    spark,
     mode,
 ):
-    spark = mocker.Mock()
-
     with pytest.raises(
         ValueError,
         match="mode must be either base_train or stacking_train",
@@ -206,5 +309,33 @@ def test_run_order_products_split_job_rejects_invalid_mode(
             input_path="input",
             output_path="output",
             mode=mode,
+            period="initial",
+            contract_path="contracts",
+        )
+
+
+@pytest.mark.parametrize(
+    "period",
+    [
+        "t3",
+        "train",
+        "final",
+        "",
+    ],
+)
+def test_run_order_products_split_job_rejects_invalid_period(
+    spark,
+    period,
+):
+    with pytest.raises(
+        ValueError,
+        match=r"period can only be one of \[initial, t1, t2\]",
+    ):
+        run_order_products_split_job(
+            spark=spark,
+            input_path="input",
+            output_path="output",
+            mode="base_train",
+            period=period,
             contract_path="contracts",
         )

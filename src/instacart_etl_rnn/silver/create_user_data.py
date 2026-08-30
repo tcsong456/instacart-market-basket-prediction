@@ -133,17 +133,4 @@ def build_user_level_data(df: DataFrame) -> DataFrame:
         .drop("orders")
     )
 
-    df = df.withColumn(
-        "eval_set",
-        F.when(
-            F.col("eval_set") == "prior",
-            "test",
-        )
-        .when(
-            F.col("eval_set") == "train",
-            "train",
-        )
-        .otherwise(F.col("eval_set")),
-    )
-
     return df

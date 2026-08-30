@@ -14,7 +14,6 @@ def test_run_product_history_job_calls_validation_before_write(mocker):
     spark = mocker.sentinel.spark
 
     user_data = mocker.sentinel.user_data
-    orders = mocker.sentinel.orders
     products = mocker.sentinel.products
     reorders = mocker.sentinel.reorders
     product_history = mocker.Mock(name="product_history")
@@ -30,10 +29,6 @@ def test_run_product_history_job_calls_validation_before_write(mocker):
     mocked_read = mocker.patch(
         "instacart_etl_rnn.jobs.create_product_history_data_job.read_parquet",
         return_value=user_data,
-    )
-    mocked_filter = mocker.patch(
-        "instacart_etl_rnn.jobs.create_product_history_data_job.filtered_orders",
-        return_value=orders,
     )
     mocked_seq = mocker.patch(
         "instacart_etl_rnn.jobs.create_product_history_data_job.parse_seq",
@@ -64,7 +59,6 @@ def test_run_product_history_job_calls_validation_before_write(mocker):
     manager = mocker.Mock()
     manager.attach_mock(mocked_join, "join")
     manager.attach_mock(mocked_read, "read")
-    manager.attach_mock(mocked_filter, "filter")
     manager.attach_mock(mocked_seq, "seq")
     manager.attach_mock(mocked_product_history, "product_history")
     manager.attach_mock(mocked_reorder_history, "reorder_history")
@@ -72,27 +66,20 @@ def test_run_product_history_job_calls_validation_before_write(mocker):
     manager.attach_mock(mock_validate, "validate")
     manager.attach_mock(mock_write, "write")
 
-    run_product_history_job(
-        spark,
-        "input",
-        "data",
-        "output",
-        "contracts",
-    )
+    run_product_history_job(spark, "input", "data", "output", "contracts", "train")
 
     assert manager.mock_calls == [
-        call.join("input", "user_data"),
-        call.read("input/user_data", spark),
-        call.filter("data", spark),
+        call.join("input", "user_data_train"),
+        call.read("input/user_data_train", spark),
         call.seq(user_data, "product_ids", "products", True),
         call.seq(user_data, "reorders", "reorders"),
-        call.product_history(df=products, path="data", orders=orders, spark=spark),
-        call.reorder_history(reorders, orders),
+        call.product_history(df=products, path="data", spark=spark),
+        call.reorder_history(reorders),
         call.join("contracts", "product_history_data.yaml"),
         call.load_contract("contracts/product_history_data.yaml"),
         call.validate(combined_history, contract=contract),
-        call.join("output", "product_history_data"),
-        call.write("output/product_history_data", combined_history),
+        call.join("output", "product_history_data_train"),
+        call.write("output/product_history_data_train", combined_history),
     ]
 
 
@@ -102,7 +89,6 @@ def test_run_product_history_job_does_not_write_when_validation_fails(
     spark = mocker.sentinel.spark
 
     user_data = mocker.sentinel.user_data
-    orders = mocker.sentinel.orders
     products = mocker.sentinel.products
     reorders = mocker.sentinel.reorders
     product_history = mocker.Mock(name="product_history")
@@ -113,10 +99,6 @@ def test_run_product_history_job_does_not_write_when_validation_fails(
     mocker.patch(
         "instacart_etl_rnn.jobs.create_product_history_data_job.read_parquet",
         return_value=user_data,
-    )
-    mocker.patch(
-        "instacart_etl_rnn.jobs.create_product_history_data_job.filtered_orders",
-        return_value=orders,
     )
     mocker.patch(
         "instacart_etl_rnn.jobs.create_product_history_data_job.parse_seq",
@@ -149,12 +131,6 @@ def test_run_product_history_job_does_not_write_when_validation_fails(
     )
 
     with pytest.raises(DataValidationError):
-        run_product_history_job(
-            spark,
-            "input",
-            "data",
-            "output",
-            "contracts",
-        )
+        run_product_history_job(spark, "input", "data", "output", "contracts", "train")
 
     mock_write.assert_not_called()

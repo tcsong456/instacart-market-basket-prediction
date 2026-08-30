@@ -8,79 +8,83 @@ schema:
   - name: product_id
     type: integer
     nullable: false
+    constraints:
+      minimum: 1
 
   - name: order_id
     type: integer
     nullable: false
+    constraints:
+      minimum: 1
 
   - name: add_to_cart_order
     type: integer
     nullable: false
+    constraints:
+      minimum: 1
 
   - name: reordered
     type: integer
     nullable: false
+    constraints:
+      allowed_values:
+        - 0
+        - 1
 
   - name: user_id
     type: integer
     nullable: false
+    constraints:
+      minimum: 1
 
   - name: eval_set
     type: string
     nullable: false
+    constraints:
+      allowed_values:
+        - prior
+        - train
 
   - name: order_number
     type: integer
     nullable: false
+    constraints:
+      minimum: 1
 
   - name: order_dow
     type: integer
     nullable: false
+    constraints:
+      minimum: 0
+      maximum: 6
 
   - name: order_hour_of_day
     type: integer
     nullable: false
-
+    constraints:
+      minimum: 0
+      maximum: 23
+  
   - name: days_since_prior_order
     type: double
     nullable: false
-
-  - name: order_history
-    type: integer
-    nullable: false
-
-  - name: user_cohort
-    type: string
-    nullable: false
-
-  - name: development_split
-    type: string
-    nullable: true
-
-  - name: arrival_period
-    type: string
-    nullable: true
-
-  - name: simulation_period
-    type: string
-    nullable: false
-
-  - name: current_period
-    type: string
-    nullable: false
-
-  - name: order_role
-    type: string
-    nullable: false
+    constraints:
+      minimum: -1.0
 
   - name: product_name
     type: string
     nullable: false
+    constraints:
+      minimum_string_length: 1
 
   - name: aisle_id
     type: integer
     nullable: false
+    constraints:
+      minimum: 1
 
   - name: department_id
     type: integer
     nullable: false
+    constraints:
+      minimum: 1

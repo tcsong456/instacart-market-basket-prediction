@@ -80,13 +80,14 @@ def test_run_product_seq_data_job_orchestrates_pipeline(
         min_word_freq=2,
         product_name_length=3,
         encode_length=4,
+        mode="validation",
     )
 
     assert manager.mock_calls == [
         call.join("data", "products"),
         call.read("data/products", spark),
-        call.join("gold", "product_history_data"),
-        call.read("gold/product_history_data", spark),
+        call.join("gold", "product_history_data_validation"),
+        call.read("gold/product_history_data_validation", spark),
         call.word_idx(products, 2),
         call.encoded_name(products, word_index),
         call.train(
@@ -98,8 +99,8 @@ def test_run_product_seq_data_job_orchestrates_pipeline(
         call.join("contracts", "product_training_data.yaml"),
         call.load("contracts/product_training_data.yaml"),
         call.validate(product_training_data, contract=contract),
-        call.join("gold", "product_training_data"),
-        call.write("gold/product_training_data", product_training_data),
+        call.join("gold", "product_training_data_validation"),
+        call.write("gold/product_training_data_validation", product_training_data),
     ]
 
     df = mocked_validate.call_args.args[0]
@@ -168,6 +169,7 @@ def test_run_product_training_data_job_does_not_write_when_validation_fails(
             min_word_freq=3,
             product_name_length=20,
             encode_length=40,
+            mode="validation",
         )
 
     mocked_write.assert_not_called()

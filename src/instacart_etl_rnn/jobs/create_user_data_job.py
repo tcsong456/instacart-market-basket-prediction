@@ -16,13 +16,17 @@ logger = logging.getLogger(__name__)
 
 
 def run_user_data_job(
-    spark: SparkSession,
-    path: str,
-    contract_path: str,
+    spark: SparkSession, path: str, contract_path: str, mode: str
 ) -> None:
     logger.info("Reading silver order_products dataset")
 
-    order_products = read_parquet(join_path(path, "order_products"), spark)
+    if mode not in ["train", "validation", "evaluation"]:
+        raise ValueError(
+            "mode must be either train or validation or evaluation, "
+            f"but received {mode}"
+        )
+
+    order_products = read_parquet(join_path(path, f"order_products_{mode}"), spark)
 
     logger.info("Building order level data")
 
@@ -39,6 +43,6 @@ def run_user_data_job(
 
         logger.info(f"Writing user data to {path}")
 
-        write_parquet(join_path(path, "user_data"), user_data)
+        write_parquet(join_path(path, f"user_data_{mode}"), user_data)
     finally:
         user_data.unpersist()

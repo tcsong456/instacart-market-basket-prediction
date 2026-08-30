@@ -1,6 +1,8 @@
 set -euo pipefail
 
 file=$1
+period=$2
+mode=$3
 
 if [[ "$file" == "raw" ]]; then
     folder="curated"
@@ -22,7 +24,8 @@ gcloud dataproc jobs submit pyspark \
     --region=europe-west1 \
     --py-files=src.zip \
     -- \
-    --input-path="gs://instacart-silver-fc45ebb3/$folder" \
+    --input-path="gs://instacart-silver-fc45ebb3/snapshots/$folder/$period" \
     --data-path="gs://instacart-bronze-fc45ebb3/$1" \
-    --output-path="gs://instacart-gold-fc45ebb3/$folder" \
-    --contract-path="gs://instacart-raw-fc45ebb3/contracts"
+    --output-path="gs://instacart-gold-fc45ebb3/snapshots/$folder/$period" \
+    --contract-path="gs://instacart-raw-fc45ebb3/contracts" \
+    --mode=$mode

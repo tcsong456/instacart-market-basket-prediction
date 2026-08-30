@@ -24,7 +24,7 @@ schema:
     constraints:
       allowed_values:
         - train
-        - test
+        - prior
 
   - name: order_sizes
     type: array<integer>

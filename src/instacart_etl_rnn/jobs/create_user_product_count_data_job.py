@@ -10,9 +10,21 @@ from instacart_etl_rnn.validation.loader import load_contract
 
 
 def run_user_product_count_job(
-    spark: SparkSession, input_path: str, output_path: str, contract_path: str
+    spark: SparkSession,
+    input_path: str,
+    output_path: str,
+    contract_path: str,
+    mode: str,
 ) -> None:
-    order_products = read_parquet(join_path(input_path, "order_products"), spark)
+    if mode not in ["train", "validation", "evaluation"]:
+        raise ValueError(
+            "mode must be either train or validation or evaluation, "
+            f"but received {mode}"
+        )
+
+    order_products = read_parquet(
+        join_path(input_path, f"order_products_{mode}"), spark
+    )
 
     user_product_count = build_user_product_count(order_products)
 
@@ -20,4 +32,6 @@ def run_user_product_count_job(
 
     validate_dataset(user_product_count, contract=contract)
 
-    write_parquet(join_path(output_path, "user_product_count"), user_product_count)
+    write_parquet(
+        join_path(output_path, f"user_product_count_{mode}"), user_product_count
+    )

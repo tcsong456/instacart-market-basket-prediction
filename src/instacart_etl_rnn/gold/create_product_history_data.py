@@ -11,7 +11,7 @@ SELECTED_COLUMNS = [
     "aisle_id",
     "department_id",
     "product_name",
-    "train_eval_set",
+    "eval_set",
     "is_ordered_history",
     "position_in_order_history",
     "history_order_size",
@@ -125,19 +125,27 @@ def parse_seq(
     return df
 
 
-def filtered_orders(path: str, spark: SparkSession) -> DataFrame:
-    data_path = join_path(path, "orders")
-    orders = read_parquet(data_path, spark)
-    filtered_orders = orders.filter(F.col("eval_set").isin("train", "test")).select(
-        "user_id", F.col("eval_set").alias("train_eval_set")
-    )
-    return filtered_orders
-
-
 def build_each_product_in_order_history(
-    path: str, df: DataFrame, orders: DataFrame, spark: SparkSession
+    path: str, df: DataFrame, spark: SparkSession
 ) -> DataFrame:
-    df = df.join(orders, how="left", on="user_id")
+    """Build candidate-product history features and next-order labels.
+
+    Explodes historical candidate products into one row per product and
+    creates sequence features describing the product's order history.
+
+    The final supplied order is treated as the prediction target through
+    ``next_products_set``. The resulting ``label`` indicates whether each
+    candidate product appears in that target order.
+
+    Args:
+        path: Base path containing the products dataset.
+        df: User-level product sequence DataFrame.
+        spark: Active Spark session.
+
+    Returns:
+        Product-level DataFrame containing historical sequence features,
+        product metadata, and the binary next-order label.
+    """
 
     df = (
         df.withColumn(
@@ -181,12 +189,9 @@ def build_each_product_in_order_history(
         .withColumn("product_id", F.explode("products_set"))
         .withColumn(
             "label",
-            F.when(
-                F.col("train_eval_set") == "train",
-                F.array_contains(F.col("next_products_set"), F.col("product_id")).cast(
-                    "int"
-                ),
-            ).otherwise(-1),
+            F.array_contains(F.col("next_products_set"), F.col("product_id")).cast(
+                "int"
+            ),
         )
         .withColumn(
             "is_ordered_history",
@@ -228,8 +233,27 @@ def build_each_product_in_order_history(
     return df.select(SELECTED_COLUMNS)
 
 
-def build_each_reorder_history(df: DataFrame, orders: DataFrame):
-    df = df.join(orders, how="left", on="user_id")
+def build_each_reorder_history(df: DataFrame):
+    """Build history features and labels for the no-reorder candidate.
+
+    Creates one synthetic candidate per user representing the case where
+    none of the previously ordered products are reordered in the target
+    order. The synthetic candidate uses ``product_id = 0`` and zero/default
+    product metadata.
+
+    The label is 1 when the target reorder indicators contain no reordered
+    products, and 0 otherwise. Historical reorder sequences are converted
+    into binary ordered-history indicators, order sizes, reorder counts,
+    and zero-valued product positions.
+
+    Args:
+        df: User-level reorder sequence DataFrame containing historical
+            reorder arrays and the target-order reorder indicators.
+
+    Returns:
+        DataFrame containing the synthetic no-reorder candidate with its
+        historical sequence features and binary target label.
+    """
 
     df = (
         df.withColumn("product_id", F.lit(0))
@@ -238,10 +262,7 @@ def build_each_reorder_history(df: DataFrame, orders: DataFrame):
         .withColumn("product_name", F.lit(""))
         .withColumn(
             "label",
-            F.when(
-                F.col("train_eval_set") == "train",
-                (F.array_max("next_reorders_int") == 0).cast("int"),
-            ).otherwise(-1),
+            (F.array_max("next_reorders_int") == 0).cast("int"),
         )
         .withColumn(
             "is_ordered_history",

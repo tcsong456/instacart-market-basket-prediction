@@ -9,13 +9,15 @@ def test_parse_args_parses_required_arguments_and_default_pad_length(
     monkeypatch.setattr(
         "sys.argv",
         [
-            "build_reorder_size_training_data ",
+            "build_reorder_size_training_data",
             "--input-path",
             "gold",
             "--output-path",
             "training",
             "--contract-path",
             "contracts",
+            "--mode",
+            "train",
         ],
     )
 
@@ -25,19 +27,22 @@ def test_parse_args_parses_required_arguments_and_default_pad_length(
     assert args.output_path == "training"
     assert args.contract_path == "contracts"
     assert args.pad_length == 30
+    assert args.mode == "train"
 
 
 def test_parse_args_parses_custom_pad_length(monkeypatch):
     monkeypatch.setattr(
         "sys.argv",
         [
-            "build_reorder_size_training_data ",
+            "build_reorder_size_training_data",
             "--input-path",
             "gold",
             "--output-path",
             "training",
             "--contract-path",
             "contracts",
+            "--mode",
+            "validation",
             "--pad-length",
             "50",
         ],
@@ -46,6 +51,7 @@ def test_parse_args_parses_custom_pad_length(monkeypatch):
     args = parse_args()
 
     assert args.pad_length == 50
+    assert args.mode == "validation"
 
 
 def test_parse_args_raises_when_required_argument_is_missing(
@@ -54,11 +60,13 @@ def test_parse_args_raises_when_required_argument_is_missing(
     monkeypatch.setattr(
         "sys.argv",
         [
-            "build_reorder_size_training_data ",
+            "build_reorder_size_training_data",
             "--input-path",
             "gold",
             "--output-path",
             "training",
+            "--mode",
+            "train",
         ],
     )
 

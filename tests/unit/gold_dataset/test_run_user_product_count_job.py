@@ -58,17 +58,18 @@ def test_run_user_product_count_job_orchestrates_pipeline(
         input_path="silver",
         output_path="gold",
         contract_path="contracts",
+        mode="validation",
     )
 
     assert manager.mock_calls == [
-        call.join("silver", "order_products"),
-        call.read("silver/order_products", spark),
+        call.join("silver", "order_products_validation"),
+        call.read("silver/order_products_validation", spark),
         call.build(order_products),
         call.join("contracts", "user_product_count.yaml"),
         call.load("contracts/user_product_count.yaml"),
         call.validate(user_product_count, contract=contract),
-        call.join("gold", "user_product_count"),
-        call.write("gold/user_product_count", user_product_count),
+        call.join("gold", "user_product_count_validation"),
+        call.write("gold/user_product_count_validation", user_product_count),
     ]
 
     df = mocked_validate.call_args.args[0]
@@ -116,6 +117,7 @@ def test_run_user_product_count_job_does_not_write_when_validation_fails(
             input_path="silver",
             output_path="gold",
             contract_path="contracts",
+            mode="validation",
         )
 
     mocked_write.assert_not_called()

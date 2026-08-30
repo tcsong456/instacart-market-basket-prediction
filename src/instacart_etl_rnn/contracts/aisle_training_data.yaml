@@ -35,7 +35,7 @@ schema:
     constraints:
       allowed_values:
         - train
-        - test
+        - prior
 
   - name: is_ordered_history
     type: array<integer>

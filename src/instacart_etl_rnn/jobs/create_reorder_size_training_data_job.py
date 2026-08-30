@@ -17,8 +17,9 @@ def run_reorder_size_training_data(
     output_path: str,
     contract_path: str,
     pad_length: int,
+    mode: str,
 ):
-    user_data = read_parquet(join_path(input_path, "user_data"), spark)
+    user_data = read_parquet(join_path(input_path, f"user_data_{mode}"), spark)
 
     df = transform_reorder_size_data(user_data)
     reorder_size_data = pad_column_arrays(df, pad_length)
@@ -31,7 +32,8 @@ def run_reorder_size_training_data(
         validate_dataset(reorder_size_data, contract=contract)
 
         write_parquet(
-            join_path(output_path, "reorder_size_training_data"), reorder_size_data
+            join_path(output_path, f"reorder_size_training_data_{mode}"),
+            reorder_size_data,
         )
     finally:
         reorder_size_data.unpersist()

@@ -1,24 +1,36 @@
 dataset:
-  name: simulation_order_data
+  name: available_orders
   description: >
-    Order-level dataset defining deterministic model-development,
-    validation, and simulated production periods for established and
-    newly arriving users.
+    Order-level simulation dataset defining deterministic user cohorts,
+    simulated arrival periods, and the cumulative orders available for
+    training and validation at a given model lifecycle period.
 
-    Established-user labels roll forward over time:
-      initial: N-3 train, N-2 validation
-      t1:      N-2 train, N-1 validation
-      t2:      N-1 train, N validation
+    For established users:
+      initial:
+        train      = orders 1..N-3
+        validation = orders 1..N-2
+      t1:
+        train      = orders 1..N-2
+        validation = orders 1..N-1
+      t2:
+        train      = orders 1..N-1
+        validation = orders 1..N
 
-    New users contribute N-1 as a training label and N as a validation
-    label during their arrival period. In subsequent periods their
-    previously validated order becomes a training label and they no
-    longer participate in validation.
+    For a new user during their arrival period:
+      train      = orders 1..N-1
+      validation = orders 1..N
+
+    A new user that arrived in a previous period contributes all known
+    orders to training and does not participate in validation.
+
+    New users that have not yet arrived, final holdout users, and
+    excluded users are unavailable for both training and validation.
 
   grain:
     - order_id
 
   allow_extra_columns: false
+
 
 schema:
   - name: user_id
@@ -122,15 +134,17 @@ schema:
         - t1
         - t2
 
-  - name: order_role
-    type: string
-    nullable: true
-    constraints:
-      allowed_values:
-        - history
-        - train_label
-        - validation_label
-        - future
+  - name: is_train_available
+    type: boolean
+    nullable: false
+
+  - name: is_validation_available
+    type: boolean
+    nullable: false
+
+  - name: is_evaluation_available
+    type: boolean
+    nullable: false
 
 derived_fields:
   - name: min_order_number
@@ -151,6 +165,18 @@ derived_fields:
     partition_by:
       - user_id
 
+  - name: order_history_count
+    aggregation: count_distinct
+    column: order_history
+    partition_by:
+      - user_id
+
+  - name: user_cohort_count
+    aggregation: count_distinct
+    column: user_cohort
+    partition_by:
+      - user_id
+
   - name: development_split_count
     aggregation: count_distinct
     column: development_split
@@ -163,17 +189,12 @@ derived_fields:
     partition_by:
       - user_id
 
-  - name: train_label_count
-    aggregation: conditional_count
-    condition: order_role = 'train_label'
+  - name: current_period_count
+    aggregation: count_distinct
+    column: current_period
     partition_by:
       - user_id
 
-  - name: validation_label_count
-    aggregation: conditional_count
-    condition: order_role = 'validation_label'
-    partition_by:
-      - user_id
 
 rules:
   - name: first_order_has_no_prior_interval
@@ -201,7 +222,15 @@ rules:
   - name: order_count_matches_history
     expression: >
       order_count = order_history
-  
+
+  - name: order_history_is_constant_per_user
+    expression: >
+      order_history_count = 1
+
+  - name: user_cohort_is_constant_per_user
+    expression: >
+      user_cohort_count = 1
+
   - name: established_users_have_sufficient_history
     expression: >
       user_cohort <> 'established'
@@ -211,6 +240,11 @@ rules:
     expression: >
       user_cohort <> 'new_user'
       OR order_history BETWEEN 3 AND 5
+
+  - name: excluded_users_have_less_than_three_orders
+    expression: >
+      user_cohort <> 'excluded'
+      OR order_history < 3
 
   - name: development_split_only_for_established
     expression: >
@@ -223,6 +257,11 @@ rules:
         AND development_split IS NULL
       )
 
+  - name: established_development_split_is_constant
+    expression: >
+      user_cohort <> 'established'
+      OR development_split_count = 1
+
   - name: arrival_period_only_for_new_users
     expression: >
       (
@@ -234,82 +273,95 @@ rules:
         AND arrival_period IS NULL
       )
 
-  - name: established_development_split_is_constant
-    expression: >
-      user_cohort <> 'established'
-      OR development_split_count = 1
-
   - name: new_user_arrival_period_is_constant
     expression: >
       user_cohort <> 'new_user'
       OR arrival_period_count = 1
-  
-  - name: established_initial_roles_are_correct
+
+  - name: current_period_is_constant
+    expression: >
+      current_period_count = 1
+
+  - name: final_holdout_simulation_period_is_correct
+    expression: >
+      user_cohort <> 'final_holdout'
+      OR simulation_period = 'final_holdout'
+
+  - name: excluded_simulation_period_is_correct
+    expression: >
+      user_cohort <> 'excluded'
+      OR simulation_period = 'excluded'
+
+  - name: new_user_simulation_period_is_correct
+    expression: >
+      user_cohort <> 'new_user'
+      OR simulation_period = 'new_user_pool'
+
+  - name: established_simulation_period_is_correct
     expression: >
       user_cohort <> 'established'
-      OR current_period <> 'initial'
       OR (
         (
-          order_number < order_history - 3
-          AND order_role = 'history'
-        )
-        OR (
-          order_number = order_history - 3
-          AND order_role = 'train_label'
+          order_number <= order_history - 3
+          AND simulation_period = 'initial'
         )
         OR (
           order_number = order_history - 2
-          AND order_role = 'validation_label'
-        )
-        OR (
-          order_number > order_history - 2
-          AND order_role = 'future'
-        )
-      )
-    
-  - name: established_t1_roles_are_correct
-    expression: >
-      user_cohort <> 'established'
-      OR current_period <> 't1'
-      OR (
-        (
-          order_number < order_history - 2
-          AND order_role = 'history'
-        )
-        OR (
-          order_number = order_history - 2
-          AND order_role = 'train_label'
+          AND simulation_period = 'validation'
         )
         OR (
           order_number = order_history - 1
-          AND order_role = 'validation_label'
-        )
-        OR (
-          order_number > order_history - 1
-          AND order_role = 'future'
-        )
-      )
-  
-  - name: established_t2_roles_are_correct
-    expression: >
-      user_cohort <> 'established'
-      OR current_period <> 't2'
-      OR (
-        (
-          order_number < order_history - 1
-          AND order_role = 'history'
-        )
-        OR (
-          order_number = order_history - 1
-          AND order_role = 'train_label'
+          AND simulation_period = 't1'
         )
         OR (
           order_number = order_history
-          AND order_role = 'validation_label'
+          AND simulation_period = 't2'
         )
       )
-  
-  - name: new_users_are_future_before_arrival
+
+  - name: established_initial_train_availability
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 'initial'
+      OR is_train_available =
+         (order_number <= order_history - 3)
+
+  - name: established_initial_validation_availability
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 'initial'
+      OR is_validation_available =
+         (order_number <= order_history - 2)
+
+  - name: established_t1_train_availability
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 't1'
+      OR is_train_available =
+         (order_number <= order_history - 2)
+
+  - name: established_t1_validation_availability
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 't1'
+      OR is_validation_available =
+         (order_number <= order_history - 1)
+
+  - name: established_t2_train_availability
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 't2'
+      OR is_train_available =
+         (order_number <= order_history - 1)
+
+  - name: established_t2_validation_availability
+    expression: >
+      user_cohort <> 'established'
+      OR current_period <> 't2'
+      OR is_validation_available =
+         (order_number <= order_history)
+
+  - name: new_users_are_unavailable_before_arrival
     expression: >
       user_cohort <> 'new_user'
       OR NOT (
@@ -319,86 +371,91 @@ rules:
           AND arrival_period = 't2'
         )
       )
-      OR order_role = 'future'
-    
-  - name: current_new_user_roles_are_correct
-    expression: >
-      user_cohort <> 'new_user'
-      OR arrival_period <> current_period
       OR (
-        (
-          order_number < order_history - 1
-          AND order_role = 'history'
-        )
-        OR (
-          order_number = order_history - 1
-          AND order_role = 'train_label'
-        )
-        OR (
-          order_number = order_history
-          AND order_role = 'validation_label'
-        )
+        is_train_available = false
+        AND is_validation_available = false
       )
-  
-  - name: previous_new_user_roles_are_correct
+
+  - name: current_new_user_train_availability
+    expression: >
+      user_cohort <> 'new_user'
+      OR arrival_period <> current_period
+      OR is_train_available =
+         (order_number <= order_history - 1)
+
+  - name: current_new_user_validation_availability
+    expression: >
+      user_cohort <> 'new_user'
+      OR arrival_period <> current_period
+      OR is_validation_available =
+         (order_number <= order_history)
+
+  - name: previous_new_user_is_fully_train_available
     expression: >
       user_cohort <> 'new_user'
       OR NOT (
         arrival_period = 't1'
         AND current_period = 't2'
       )
+      OR is_train_available = true
+
+  - name: previous_new_user_is_not_validation_available
+    expression: >
+      user_cohort <> 'new_user'
+      OR NOT (
+        arrival_period = 't1'
+        AND current_period = 't2'
+      )
+      OR is_validation_available = false
+
+  - name: final_holdout_is_never_available
+    expression: >
+      user_cohort <> 'final_holdout'
       OR (
-        (
-          order_number < order_history
-          AND order_role = 'history'
-        )
-        OR (
-          order_number = order_history
-          AND order_role = 'train_label'
-        )
+        is_train_available = false
+        AND is_validation_available = false
       )
-  
-  - name: established_has_one_train_label
-    expression: >
-      user_cohort <> 'established'
-      OR train_label_count = 1
 
-  - name: established_has_one_validation_label
+  - name: excluded_is_never_available
     expression: >
-      user_cohort <> 'established'
-      OR validation_label_count = 1
-  
-  - name: current_new_user_has_one_train_label
-    expression: >
-      user_cohort <> 'new_user'
-      OR arrival_period <> current_period
-      OR train_label_count = 1
+      user_cohort <> 'excluded'
+      OR (
+        is_train_available = false
+        AND is_validation_available = false
+      )
 
-  - name: current_new_user_has_one_validation_label
+  - name: train_is_subset_of_validation_except_previous_new_users
     expression: >
-      user_cohort <> 'new_user'
-      OR arrival_period <> current_period
-      OR validation_label_count = 1
-  
-  - name: previous_new_user_has_one_train_label
-    expression: >
-      user_cohort <> 'new_user'
-      OR NOT (
-        arrival_period = 't1'
+      (
+        user_cohort = 'new_user'
+        AND arrival_period = 't1'
         AND current_period = 't2'
       )
-      OR train_label_count = 1
-
-  - name: previous_new_user_has_no_validation_label
-    expression: >
-      user_cohort <> 'new_user'
-      OR NOT (
-        arrival_period = 't1'
-        AND current_period = 't2'
-      )
-      OR validation_label_count = 0
+      OR is_train_available = false
+      OR is_validation_available = true
   
-  - name: holdout_and_excluded_have_no_model_role
+  - name: final_holdout_initial_evaluation_availability
     expression: >
-      user_cohort NOT IN ('final_holdout', 'excluded')
-      OR order_role IS NULL
+      user_cohort <> 'final_holdout'
+      OR current_period <> 'initial'
+      OR is_evaluation_available =
+         (order_number <= order_history - 2)
+
+  - name: final_holdout_t1_evaluation_availability
+    expression: >
+      user_cohort <> 'final_holdout'
+      OR current_period <> 't1'
+      OR is_evaluation_available =
+         (order_number <= order_history - 1)
+
+  - name: final_holdout_t2_evaluation_availability
+    expression: >
+      user_cohort <> 'final_holdout'
+      OR current_period <> 't2'
+      OR is_evaluation_available =
+         (order_number <= order_history)
+
+  - name: evaluation_available_only_for_final_holdout
+    expression: >
+      user_cohort = 'final_holdout'
+      OR is_evaluation_available = false

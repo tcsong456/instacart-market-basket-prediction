@@ -24,20 +24,19 @@ schema:
     constraints:
       minimum: 0
 
-  - name: train_eval_set
+  - name: eval_set
     type: string
     nullable: false
     constraints:
       allowed_values:
         - train
-        - test
+        - prior
 
   - name: label
     type: integer
     nullable: false
     constraints:
       allowed_values:
-        - -1
         - 0
         - 1
 

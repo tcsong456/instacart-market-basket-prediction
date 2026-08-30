@@ -40,7 +40,7 @@ def test_build_product_training_data_pads_and_truncates_sequences(
         """
         user_id int,
         product_id int,
-        train_eval_set string,
+        eval_set string,
         label int,
         is_ordered_history string,
         position_in_order_history string,
@@ -123,7 +123,7 @@ def test_build_product_training_data_pads_missing_product_name_with_zeros(
         """
         user_id int,
         product_id int,
-        train_eval_set string,
+        eval_set string,
         label int,
         is_ordered_history string,
         position_in_order_history string,
@@ -159,7 +159,7 @@ def test_build_product_training_data_pads_missing_product_name_with_zeros(
     assert result.columns == [
         "user_id",
         "product_id",
-        "train_eval_set",
+        "eval_set",
         "label",
         "product_name_encoded",
         "is_ordered_history",

@@ -18,6 +18,7 @@ def run_product_training_data_job(
     input_path: str,
     output_path: str,
     contract_path: str,
+    mode: str,
     min_word_freq: int = 5,
     product_name_length: int = 50,
     encode_length: int = 50,
@@ -44,7 +45,7 @@ def run_product_training_data_job(
 
     products = read_parquet(join_path(raw_path, "products"), spark)
     product_history_data = read_parquet(
-        join_path(input_path, "product_history_data"), spark
+        join_path(input_path, f"product_history_data_{mode}"), spark
     )
 
     word_index = build_word_idx(products, min_word_freq)
@@ -68,7 +69,8 @@ def run_product_training_data_job(
         validate_dataset(product_training_data, contract=contract)
 
         write_parquet(
-            join_path(output_path, "product_training_data"), product_training_data
+            join_path(output_path, f"product_training_data_{mode}"),
+            product_training_data,
         )
     finally:
         product_training_data.unpersist()
