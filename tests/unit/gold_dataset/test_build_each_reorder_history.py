@@ -14,8 +14,18 @@ def test_build_each_reorder_history(spark):
                 "18 10 3 9",
                 "27 7 11 23",
                 "1 2 3 4",
+                "prior",
             ),
-            (2, [[0, 0], [0, 0]], [1, 0], "0 2 1", "5 17 22", "30 24 28", "1 2 3"),
+            (
+                2,
+                [[0, 0], [0, 0]],
+                [1, 0],
+                "0 2 1",
+                "5 17 22",
+                "30 24 28",
+                "1 2 3",
+                "train",
+            ),
             (
                 3,
                 [[1, 0], [1, 1]],
@@ -24,6 +34,7 @@ def test_build_each_reorder_history(spark):
                 "13 21 13",
                 "10 6 15",
                 "1 2 3",
+                "prior",
             ),
         ],
         [
@@ -34,6 +45,7 @@ def test_build_each_reorder_history(spark):
             "order_hours",
             "days_since_prior_orders",
             "order_numbers",
+            "eval_set",
         ],
     )
 
@@ -47,6 +59,7 @@ def test_build_each_reorder_history(spark):
     assert rows[1]["position_in_order_history"] == "0 0 0"
     assert rows[1]["order_dows"] == "3 2 6 6"
     assert rows[1]["order_hours"] == "18 10 3 9"
+    assert rows[1]["eval_set"] == "prior"
     assert rows[1]["days_since_prior_orders"] == "27 7 11 23"
     assert rows[1]["order_numbers"] == "1 2 3 4"
     assert rows[1]["history_order_size"] == "2 2 3"
