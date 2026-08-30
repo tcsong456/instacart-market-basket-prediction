@@ -72,7 +72,7 @@ def test_build_each_reorder_history(spark):
     assert rows[2]["history_order_size"] == "2 2"
     assert rows[2]["history_reorder_size"] == "0 0"
 
-    assert rows[3]["label"] == -1
+    assert rows[3]["label"] == 1
 
     assert rows[3]["is_ordered_history"] == "0 0"
     assert rows[3]["position_in_order_history"] == "0 0"
