@@ -17,6 +17,7 @@ def test_run_product_history_job_end_to_end(spark, tmp_path):
                 "10 11 12",
                 "-1.0 10.0 5.0",
                 "1 2 3",
+                "train",
             ),
             (
                 2,
@@ -26,6 +27,7 @@ def test_run_product_history_job_end_to_end(spark, tmp_path):
                 "15 16",
                 "-1.0 7.0",
                 "1 2",
+                "prior",
             ),
         ],
         """
@@ -35,20 +37,7 @@ def test_run_product_history_job_end_to_end(spark, tmp_path):
         order_dows STRING,
         order_hours STRING,
         days_since_prior_orders STRING,
-        order_numbers STRING
-        """,
-    )
-
-    orders = spark.createDataFrame(
-        [
-            (1, 1, "prior"),
-            (3, 2, "prior"),
-            (2, 1, "train"),
-            (4, 2, "test"),
-        ],
-        """
-        order_id INT,
-        user_id INT,
+        order_numbers STRING,
         eval_set STRING
         """,
     )
@@ -68,8 +57,7 @@ def test_run_product_history_job_end_to_end(spark, tmp_path):
         """,
     )
 
-    write_parquet(str(tmp_path / "user_data"), user_data)
-    write_parquet(str(tmp_path / "data" / "orders"), orders)
+    write_parquet(str(tmp_path / "user_data_train"), user_data)
     write_parquet(str(tmp_path / "data" / "products"), products)
 
     contract_path = (
@@ -82,9 +70,10 @@ def test_run_product_history_job_end_to_end(spark, tmp_path):
         data_path=tmp_path / "data",
         output_path=tmp_path / "output",
         contract_path=contract_path,
+        mode="train",
     )
 
-    result = read_parquet(tmp_path / "output" / "product_history_data", spark)
+    result = read_parquet(tmp_path / "output" / "product_history_data_train", spark)
 
     rows = result.collect()
 
@@ -106,6 +95,7 @@ def test_run_product_history_job_end_to_end(spark, tmp_path):
     assert row[10]["department_id"] == 1
     assert row[10]["product_name"] == "Apple"
     assert row[10]["label"] == 0
+    assert row[10]["eval_set"] == "train"
 
     assert row[20]["is_ordered_history"] == "1 0"
     assert row[20]["position_in_order_history"] == "2 0"
@@ -147,11 +137,12 @@ def test_run_product_history_job_end_to_end(spark, tmp_path):
     assert row[30]["aisle_id"] == 3
     assert row[30]["department_id"] == 2
     assert row[30]["product_name"] == "Milk"
-    assert row[30]["label"] == -1
+    assert row[30]["label"] == 0
+    assert row[30]["eval_set"] == "prior"
 
     assert row[0]["is_ordered_history"] == "1"
     assert row[0]["position_in_order_history"] == "0"
     assert row[0]["aisle_id"] == 0
     assert row[0]["department_id"] == 0
     assert row[0]["product_name"] == ""
-    assert row[0]["label"] == -1
+    assert row[0]["label"] == 1

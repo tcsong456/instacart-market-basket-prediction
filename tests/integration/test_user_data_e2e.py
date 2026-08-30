@@ -44,11 +44,16 @@ def test_user_data_complies_with_contract(spark, user_data_contract_path, tmp_pa
         """,
     )
 
-    write_parquet(tmp_path / "order_products", order_products)
+    write_parquet(tmp_path / "order_products_train", order_products)
 
-    run_user_data_job(spark, tmp_path, user_data_contract_path)
+    run_user_data_job(
+        spark,
+        tmp_path,
+        user_data_contract_path,
+        mode="train",
+    )
 
-    result = read_parquet(tmp_path / "user_data", spark)
+    result = read_parquet(tmp_path / "user_data_train", spark)
 
     actual = {row.user_id: row.asDict(recursive=True) for row in result.collect()}
 

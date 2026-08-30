@@ -58,7 +58,9 @@ def test_build_order_products_preserves_simulation_columns(
                 None,
                 "initial",
                 "initial",
-                "history",
+                True,
+                True,
+                False,
             ),
             (
                 101,
@@ -74,7 +76,9 @@ def test_build_order_products_preserves_simulation_columns(
                 None,
                 "initial",
                 "initial",
-                "train_label",
+                True,
+                True,
+                False,
             ),
             (
                 102,
@@ -90,7 +94,9 @@ def test_build_order_products_preserves_simulation_columns(
                 None,
                 "validation",
                 "initial",
-                "validation_label",
+                True,
+                True,
+                False,
             ),
         ],
         """
@@ -107,7 +113,9 @@ def test_build_order_products_preserves_simulation_columns(
         arrival_period string,
         simulation_period string,
         current_period string,
-        order_role string
+        is_train_available boolean,
+        is_validation_available boolean,
+        is_evaluation_available boolean
         """,
     )
     write_parquet(tmp_path / "orders" / "available_orders", orders)
@@ -148,11 +156,17 @@ def test_build_order_products_preserves_simulation_columns(
     assert actual[(100, 10)]["arrival_period"] is None
     assert actual[(100, 10)]["simulation_period"] == "initial"
     assert actual[(100, 10)]["current_period"] == "initial"
-    assert actual[(100, 10)]["order_role"] == "history"
+    assert actual[(100, 10)]["is_train_available"] is True
+    assert actual[(100, 10)]["is_validation_available"] is True
+    assert actual[(100, 10)]["is_evaluation_available"] is False
 
-    assert actual[(101, 20)]["order_role"] == "train_label"
+    assert actual[(101, 20)]["is_train_available"] is True
+    assert actual[(101, 20)]["is_validation_available"] is True
+    assert actual[(101, 20)]["is_evaluation_available"] is False
 
-    assert actual[(102, 10)]["order_role"] == "validation_label"
+    assert actual[(102, 10)]["is_train_available"] is True
+    assert actual[(102, 10)]["is_validation_available"] is True
+    assert actual[(102, 10)]["is_evaluation_available"] is False
     assert actual[(102, 10)]["simulation_period"] == "validation"
 
     assert actual[(100, 10)]["days_since_prior_order"] == -1.0
@@ -203,7 +217,9 @@ def test_build_order_products_preserves_new_user_metadata(
                 "t1",
                 "new_user_pool",
                 "t1",
-                "history",
+                True,
+                True,
+                False,
             ),
             (
                 201,
@@ -219,7 +235,9 @@ def test_build_order_products_preserves_new_user_metadata(
                 "t1",
                 "new_user_pool",
                 "t1",
-                "train_label",
+                True,
+                True,
+                False,
             ),
             (
                 202,
@@ -235,7 +253,9 @@ def test_build_order_products_preserves_new_user_metadata(
                 "t1",
                 "new_user_pool",
                 "t1",
-                "validation_label",
+                False,
+                True,
+                False,
             ),
         ],
         """
@@ -252,7 +272,9 @@ def test_build_order_products_preserves_new_user_metadata(
         arrival_period string,
         simulation_period string,
         current_period string,
-        order_role string
+        is_train_available boolean,
+        is_validation_available boolean,
+        is_evaluation_available boolean
         """,
     )
     write_parquet(tmp_path / "orders" / "available_orders", orders)
@@ -286,10 +308,17 @@ def test_build_order_products_preserves_new_user_metadata(
     assert actual[1]["user_cohort"] == "new_user"
     assert actual[1]["development_split"] is None
     assert actual[1]["arrival_period"] == "t1"
-    assert actual[1]["order_role"] == "history"
+    assert actual[1]["is_train_available"] is True
+    assert actual[1]["is_validation_available"] is True
+    assert actual[1]["is_evaluation_available"] is False
 
-    assert actual[2]["order_role"] == "train_label"
-    assert actual[3]["order_role"] == "validation_label"
+    assert actual[2]["is_train_available"] is True
+    assert actual[2]["is_validation_available"] is True
+    assert actual[2]["is_evaluation_available"] is False
+
+    assert actual[3]["is_train_available"] is False
+    assert actual[3]["is_validation_available"] is True
+    assert actual[3]["is_evaluation_available"] is False
 
 
 def test_build_order_products_does_not_write_invalid_silver_dataset(
@@ -345,7 +374,9 @@ def test_build_order_products_does_not_write_invalid_silver_dataset(
                 None,
                 "initial",
                 "initial",
-                "history",
+                True,
+                True,
+                False,
             ),
         ],
         """
@@ -362,7 +393,9 @@ def test_build_order_products_does_not_write_invalid_silver_dataset(
         arrival_period STRING,
         simulation_period STRING,
         current_period STRING,
-        order_role STRING
+        is_train_available BOOLEAN,
+        is_validation_available BOOLEAN,
+        is_evaluation_available BOOLEAN
         """,
     )
     products_df.write.parquet(str(bronze_path / "products"))
