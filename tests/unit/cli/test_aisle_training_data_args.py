@@ -54,6 +54,30 @@ def test_parse_args_parses_custom_pad_length(monkeypatch):
     assert args.mode == "validation"
 
 
+def test_parse_args_rejects_invalid_mode(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "build_aisle_training_data",
+            "--input-path",
+            "gold",
+            "--output-path",
+            "training",
+            "--contract-path",
+            "contracts",
+            "--mode",
+            "stacking_train",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        parse_args()
+
+    assert exc_info.value.code == 2
+
+
 def test_parse_args_raises_when_required_argument_is_missing(
     monkeypatch,
 ):

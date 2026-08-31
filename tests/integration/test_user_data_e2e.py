@@ -1,8 +1,10 @@
+from pathlib import Path
+
 from instacart_etl_rnn.common.io import read_parquet, write_parquet
 from instacart_etl_rnn.jobs.create_user_data_job import run_user_data_job
 
 
-def test_user_data_complies_with_contract(spark, user_data_contract_path, tmp_path):
+def test_user_data_complies_with_contract(spark, tmp_path):
     order_products = spark.createDataFrame(
         [
             (10, 1, 1, 0, 1, "prior", 1, 0, 10, -1.0, "Apple", 24, 4),
@@ -24,8 +26,8 @@ def test_user_data_complies_with_contract(spark, user_data_contract_path, tmp_pa
             ),
             (30, 2, 2, 0, 1, "train", 2, 1, 12, 5.0, "Milk", 84, 16),
             (40, 3, 1, 0, 2, "prior", 1, 2, 15, -1.0, "Bread", 112, 3),
-            (40, 4, 1, 1, 2, "test", 2, 3, 16, 7.0, "Bread", 112, 3),
-            (50, 4, 2, 0, 2, "test", 2, 3, 16, 7.0, "Eggs", 86, 16),
+            (40, 4, 1, 1, 2, "train", 2, 3, 16, 7.0, "Bread", 112, 3),
+            (50, 4, 2, 0, 2, "train", 2, 3, 16, 7.0, "Eggs", 86, 16),
         ],
         """
         product_id INT,
@@ -46,6 +48,9 @@ def test_user_data_complies_with_contract(spark, user_data_contract_path, tmp_pa
 
     write_parquet(tmp_path / "order_products_train", order_products)
 
+    user_data_contract_path = (
+        Path(__file__).resolve().parents[2] / "src" / "instacart_etl_rnn" / "contracts"
+    )
     run_user_data_job(
         spark,
         tmp_path,
@@ -79,7 +84,7 @@ def test_user_data_complies_with_contract(spark, user_data_contract_path, tmp_pa
             "order_hours": "15 16",
             "days_since_prior_orders": "-1.0 7.0",
             "order_numbers": "1 2",
-            "eval_set": "test",
+            "eval_set": "train",
             "order_ids": "3 4",
             "aisle_ids": "112 112_86",
             "department_ids": "3 3_16",

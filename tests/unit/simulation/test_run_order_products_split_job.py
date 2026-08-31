@@ -286,6 +286,10 @@ def test_run_order_products_split_job_stacking_train(
         ),
     ]
 
+    written_paths = [call.args[0] for call in mock_write.call_args_list]
+    assert all("evaluation" not in path for path in written_paths)
+    assert len(written_paths) == 2
+
 
 @pytest.mark.parametrize(
     "mode",

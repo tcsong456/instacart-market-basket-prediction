@@ -1,8 +1,12 @@
 from pathlib import Path
 
 import pytest
+from pyspark.sql import functions as F
 
 from instacart_etl_rnn.common.io import read_parquet, write_parquet
+from instacart_etl_rnn.jobs.create_user_split_data_job import (
+    run_simulation_split_job,
+)
 from instacart_etl_rnn.silver.create_order_products import build_order_products
 from instacart_etl_rnn.validation.exceptions import DataValidationError
 
@@ -11,93 +15,26 @@ CONTRACT_PATH = (
 )
 
 
-def test_build_order_products_preserves_simulation_columns(
-    spark,
-    tmp_path,
-):
-    order_products_prior = spark.createDataFrame(
-        [
-            (100, 10, 1, 0),
-            (101, 20, 2, 1),
-        ],
-        """
-        order_id int,
-        product_id int,
-        add_to_cart_order int,
-        reordered int
-        """,
-    )
-    write_parquet(tmp_path / "order_products__prior", order_products_prior)
+def _write_bronze_inputs(spark, bronze_path):
+    """Write bronze orders / order_products / products for the e2e.
 
-    order_products_train = spark.createDataFrame(
-        [
-            (102, 10, 1, 1),
-        ],
-        """
-        order_id int,
-        product_id int,
-        add_to_cart_order int,
-        reordered int
-        """,
-    )
-    write_parquet(tmp_path / "order_products__train", order_products_train)
+    Users:
+      101 - 6 orders -> established or final_holdout (hash-dependent)
+      202 - 4 orders -> new_user
+    """
 
     orders = spark.createDataFrame(
         [
-            (
-                100,
-                1,
-                "prior",
-                1,
-                0,
-                10,
-                None,
-                6,
-                "established",
-                "base_train",
-                None,
-                "initial",
-                "initial",
-                True,
-                True,
-                False,
-            ),
-            (
-                101,
-                1,
-                "prior",
-                2,
-                1,
-                11,
-                7.0,
-                6,
-                "established",
-                "base_train",
-                None,
-                "initial",
-                "initial",
-                True,
-                True,
-                False,
-            ),
-            (
-                102,
-                1,
-                "train",
-                3,
-                2,
-                12,
-                5.0,
-                6,
-                "established",
-                "base_train",
-                None,
-                "validation",
-                "initial",
-                True,
-                True,
-                False,
-            ),
+            (1011, 101, "prior", 1, 0, 10, None),
+            (1012, 101, "prior", 2, 1, 11, 5.0),
+            (1013, 101, "prior", 3, 2, 12, 6.0),
+            (1014, 101, "prior", 4, 3, 13, 7.0),
+            (1015, 101, "prior", 5, 4, 14, 8.0),
+            (1016, 101, "train", 6, 5, 15, 9.0),
+            (2021, 202, "prior", 1, 0, 10, None),
+            (2022, 202, "prior", 2, 1, 11, 5.0),
+            (2023, 202, "prior", 3, 2, 12, 6.0),
+            (2024, 202, "train", 4, 3, 13, 7.0),
         ],
         """
         order_id int,
@@ -106,24 +43,45 @@ def test_build_order_products_preserves_simulation_columns(
         order_number int,
         order_dow int,
         order_hour_of_day int,
-        days_since_prior_order double,
-        order_history int,
-        user_cohort string,
-        development_split string,
-        arrival_period string,
-        simulation_period string,
-        current_period string,
-        is_train_available boolean,
-        is_validation_available boolean,
-        is_evaluation_available boolean
+        days_since_prior_order double
         """,
     )
-    write_parquet(tmp_path / "orders" / "available_orders", orders)
+    write_parquet(bronze_path / "orders", orders)
+
+    order_products_prior = spark.createDataFrame(
+        [
+            (1011, 10, 1, 0),
+            (1012, 20, 1, 0),
+            (1013, 10, 1, 1),
+            (1014, 20, 1, 1),
+            (1015, 10, 1, 1),
+            (2021, 30, 1, 0),
+            (2022, 40, 1, 0),
+            (2023, 30, 1, 1),
+        ],
+        """
+        order_id int,
+        product_id int,
+        add_to_cart_order int,
+        reordered int
+        """,
+    )
+    order_products_train = spark.createDataFrame(
+        [
+            (1016, 20, 1, 1),
+            (2024, 40, 1, 1),
+        ],
+        schema=order_products_prior.schema,
+    )
+    write_parquet(bronze_path / "order_products__prior", order_products_prior)
+    write_parquet(bronze_path / "order_products__train", order_products_train)
 
     products = spark.createDataFrame(
         [
             (10, "Banana", 1, 1),
             (20, "Milk", 2, 2),
+            (30, "Bread", 3, 3),
+            (40, "Eggs", 4, 4),
         ],
         """
         product_id int,
@@ -132,193 +90,159 @@ def test_build_order_products_preserves_simulation_columns(
         department_id int
         """,
     )
-    write_parquet(tmp_path / "products", products)
-
-    build_order_products(
-        spark=spark,
-        input_path=tmp_path,
-        output_path=tmp_path / "silver",
-        contract_path=CONTRACT_PATH,
-        order_path=tmp_path / "orders",
-    )
-
-    output_df = read_parquet(tmp_path / "silver" / "order_products", spark)
-
-    actual = {
-        (row.order_id, row.product_id): row.asDict(recursive=True)
-        for row in output_df.collect()
-    }
-
-    assert actual[(100, 10)]["user_id"] == 1
-    assert actual[(100, 10)]["order_history"] == 6
-    assert actual[(100, 10)]["user_cohort"] == "established"
-    assert actual[(100, 10)]["development_split"] == "base_train"
-    assert actual[(100, 10)]["arrival_period"] is None
-    assert actual[(100, 10)]["simulation_period"] == "initial"
-    assert actual[(100, 10)]["current_period"] == "initial"
-    assert actual[(100, 10)]["is_train_available"] is True
-    assert actual[(100, 10)]["is_validation_available"] is True
-    assert actual[(100, 10)]["is_evaluation_available"] is False
-
-    assert actual[(101, 20)]["is_train_available"] is True
-    assert actual[(101, 20)]["is_validation_available"] is True
-    assert actual[(101, 20)]["is_evaluation_available"] is False
-
-    assert actual[(102, 10)]["is_train_available"] is True
-    assert actual[(102, 10)]["is_validation_available"] is True
-    assert actual[(102, 10)]["is_evaluation_available"] is False
-    assert actual[(102, 10)]["simulation_period"] == "validation"
-
-    assert actual[(100, 10)]["days_since_prior_order"] == -1.0
-
-    assert actual[(100, 10)]["product_name"] == "Banana"
-    assert actual[(100, 10)]["aisle_id"] == 1
-    assert actual[(100, 10)]["department_id"] == 1
+    write_parquet(bronze_path / "products", products)
 
 
-def test_build_order_products_preserves_new_user_metadata(
+def test_build_order_products_from_real_simulation_output(
     spark,
     tmp_path,
 ):
-    prior = spark.createDataFrame(
-        [
-            (200, 30, 1, 0),
-            (201, 30, 1, 1),
-            (202, 40, 2, 1),
-        ],
-        """
-        order_id int,
-        product_id int,
-        add_to_cart_order int,
-        reordered int
-        """,
-    )
-    write_parquet(tmp_path / "order_products__prior", prior)
+    bronze_path = tmp_path / "bronze"
+    simulation_path = tmp_path / "simulation" / "t2"
+    silver_path = tmp_path / "silver"
 
-    train = spark.createDataFrame(
-        [],
-        schema=prior.schema,
-    )
-    write_parquet(tmp_path / "order_products__train", train)
+    _write_bronze_inputs(spark, bronze_path)
 
-    orders = spark.createDataFrame(
-        [
-            (
-                200,
-                50,
-                "prior",
-                1,
-                0,
-                10,
-                None,
-                3,
-                "new_user",
-                None,
-                "t1",
-                "new_user_pool",
-                "t1",
-                True,
-                True,
-                False,
-            ),
-            (
-                201,
-                50,
-                "prior",
-                2,
-                1,
-                11,
-                7.0,
-                3,
-                "new_user",
-                None,
-                "t1",
-                "new_user_pool",
-                "t1",
-                True,
-                True,
-                False,
-            ),
-            (
-                202,
-                50,
-                "prior",
-                3,
-                2,
-                12,
-                8.0,
-                3,
-                "new_user",
-                None,
-                "t1",
-                "new_user_pool",
-                "t1",
-                False,
-                True,
-                False,
-            ),
-        ],
-        """
-        order_id int,
-        user_id int,
-        eval_set string,
-        order_number int,
-        order_dow int,
-        order_hour_of_day int,
-        days_since_prior_order double,
-        order_history int,
-        user_cohort string,
-        development_split string,
-        arrival_period string,
-        simulation_period string,
-        current_period string,
-        is_train_available boolean,
-        is_validation_available boolean,
-        is_evaluation_available boolean
-        """,
+    run_simulation_split_job(
+        spark=spark,
+        input_path=str(bronze_path),
+        output_path=str(simulation_path),
+        contract_path=str(CONTRACT_PATH),
+        period="t2",
     )
-    write_parquet(tmp_path / "orders" / "available_orders", orders)
 
-    products = spark.createDataFrame(
-        [
-            (30, "Milk", 2, 2),
-            (40, "Bread", 3, 3),
-        ],
-        """
-        product_id int,
-        product_name string,
-        aisle_id int,
-        department_id int
-        """,
+    available_orders = read_parquet(
+        simulation_path / "available_orders",
+        spark,
     )
-    write_parquet(tmp_path / "products", products)
+    assert available_orders.count() == 10
 
     build_order_products(
         spark=spark,
-        input_path=tmp_path,
-        output_path=tmp_path / "silver",
-        contract_path=CONTRACT_PATH,
-        order_path=tmp_path / "orders",
+        input_path=str(bronze_path),
+        output_path=str(silver_path),
+        contract_path=str(CONTRACT_PATH),
+        order_path=str(simulation_path),
     )
 
-    result = read_parquet(tmp_path / "silver" / "order_products", spark)
+    result = read_parquet(silver_path / "order_products", spark)
 
-    actual = {row.order_number: row.asDict(recursive=True) for row in result.collect()}
+    actual = {
+        (row.order_id, row.product_id): row.asDict(recursive=True)
+        for row in result.collect()
+    }
 
-    assert actual[1]["user_cohort"] == "new_user"
-    assert actual[1]["development_split"] is None
-    assert actual[1]["arrival_period"] == "t1"
-    assert actual[1]["is_train_available"] is True
-    assert actual[1]["is_validation_available"] is True
-    assert actual[1]["is_evaluation_available"] is False
+    assert set(actual) == {
+        (1011, 10),
+        (1012, 20),
+        (1013, 10),
+        (1014, 20),
+        (1015, 10),
+        (1016, 20),
+        (2021, 30),
+        (2022, 40),
+        (2023, 30),
+        (2024, 40),
+    }
 
-    assert actual[2]["is_train_available"] is True
-    assert actual[2]["is_validation_available"] is True
-    assert actual[2]["is_evaluation_available"] is False
+    assert actual[(1011, 10)]["product_name"] == "Banana"
+    assert actual[(1011, 10)]["aisle_id"] == 1
+    assert actual[(1011, 10)]["department_id"] == 1
+    assert actual[(1011, 10)]["days_since_prior_order"] == -1.0
 
-    assert actual[3]["is_train_available"] is False
-    assert actual[3]["is_validation_available"] is True
-    assert actual[3]["is_evaluation_available"] is False
+    assert actual[(2022, 40)]["product_name"] == "Eggs"
+    assert actual[(2022, 40)]["aisle_id"] == 4
+    assert actual[(2022, 40)]["department_id"] == 4
+    assert actual[(2022, 40)]["days_since_prior_order"] == 5.0
+
+    user_101 = result.filter(F.col("user_id") == 101).orderBy("order_number").collect()
+    assert len(user_101) == 6
+
+    cohort_101 = user_101[0].user_cohort
+    assert cohort_101 in {"established", "final_holdout"}
+    assert {row.user_cohort for row in user_101} == {cohort_101}
+    assert {row.current_period for row in user_101} == {"t2"}
+    assert {row.order_history for row in user_101} == {6}
+
+    flags_101 = {
+        row.order_number: (
+            row.is_train_available,
+            row.is_validation_available,
+            row.is_evaluation_available,
+        )
+        for row in user_101
+    }
+
+    if cohort_101 == "established":
+        assert {row.development_split for row in user_101} <= {
+            "base_train",
+            "stacking_train",
+        }
+        assert {row.arrival_period for row in user_101} == {None}
+        assert flags_101 == {
+            1: (True, True, False),
+            2: (True, True, False),
+            3: (True, True, False),
+            4: (True, True, False),
+            5: (True, True, False),
+            6: (False, True, False),
+        }
+        assert {row.order_number: row.simulation_period for row in user_101} == {
+            1: "initial",
+            2: "initial",
+            3: "initial",
+            4: "validation",
+            5: "t1",
+            6: "t2",
+        }
+    else:
+        assert {row.development_split for row in user_101} == {None}
+        assert {row.arrival_period for row in user_101} == {None}
+        assert flags_101 == {
+            1: (False, False, True),
+            2: (False, False, True),
+            3: (False, False, True),
+            4: (False, False, True),
+            5: (False, False, True),
+            6: (False, False, True),
+        }
+        assert {row.simulation_period for row in user_101} == {"final_holdout"}
+
+    user_202 = result.filter(F.col("user_id") == 202).orderBy("order_number").collect()
+    assert len(user_202) == 4
+    assert {row.user_cohort for row in user_202} == {"new_user"}
+    assert {row.development_split for row in user_202} == {None}
+    assert {row.current_period for row in user_202} == {"t2"}
+    assert {row.order_history for row in user_202} == {4}
+    assert {row.simulation_period for row in user_202} == {"new_user_pool"}
+
+    arrival_period = user_202[0].arrival_period
+    assert arrival_period in {"t1", "t2"}
+    assert {row.arrival_period for row in user_202} == {arrival_period}
+
+    flags_202 = {
+        row.order_number: (
+            row.is_train_available,
+            row.is_validation_available,
+            row.is_evaluation_available,
+        )
+        for row in user_202
+    }
+
+    if arrival_period == "t2":
+        assert flags_202 == {
+            1: (True, True, False),
+            2: (True, True, False),
+            3: (True, True, False),
+            4: (False, True, False),
+        }
+    else:
+        assert flags_202 == {
+            1: (True, False, False),
+            2: (True, False, False),
+            3: (True, False, False),
+            4: (True, False, False),
+        }
 
 
 def test_build_order_products_does_not_write_invalid_silver_dataset(
@@ -402,6 +326,7 @@ def test_build_order_products_does_not_write_invalid_silver_dataset(
     bad_prior_df.write.parquet(str(bronze_path / "order_products__prior"))
     train_df.write.parquet(str(bronze_path / "order_products__train"))
     available_orders_df.write.parquet(str(order_path / "available_orders"))
+
     with pytest.raises(DataValidationError):
         build_order_products(
             spark=spark,
@@ -410,4 +335,5 @@ def test_build_order_products_does_not_write_invalid_silver_dataset(
             order_path=str(order_path),
             contract_path=str(CONTRACT_PATH),
         )
+
     assert not written_path.exists()

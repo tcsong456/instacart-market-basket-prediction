@@ -13,7 +13,7 @@ from instacart_etl_rnn.validation.dataset import validate_dataset
 from instacart_etl_rnn.validation.loader import load_contract
 
 
-def run_user_split_job(
+def run_simulation_split_job(
     spark: SparkSession,
     input_path: str,
     output_path: str,
