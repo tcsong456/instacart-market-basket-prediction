@@ -16,14 +16,10 @@ from tests.helpers import find_result
 def test_validate_dataset_accepts_valid_orders(
     validate_dataset_orders_df,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
 ):
     report = validate_dataset(
         validate_dataset_orders_df,
         contract=validate_dataset_orders_contract,
-        reference_datasets={
-            "users": validate_dataset_users_df,
-        },
     )
 
     assert report.dataset_name == "orders"
@@ -35,7 +31,6 @@ def test_validate_dataset_accepts_valid_orders(
 def test_validate_dataset_fails_presence_gate(
     validate_dataset_orders_df,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
     caplog,
 ):
     bad_df = validate_dataset_orders_df.drop("user_id")
@@ -45,9 +40,6 @@ def test_validate_dataset_fails_presence_gate(
             validate_dataset(
                 bad_df,
                 contract=validate_dataset_orders_contract,
-                reference_datasets={
-                    "users": validate_dataset_users_df,
-                },
             )
 
     report = exc_info.value.report
@@ -66,7 +58,6 @@ def test_validate_dataset_fails_presence_gate(
 def test_validate_dataset_fails_datatype_gate(
     validate_dataset_orders_df,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
     caplog,
 ):
     bad_df = validate_dataset_orders_df.withColumn(
@@ -79,9 +70,6 @@ def test_validate_dataset_fails_datatype_gate(
             validate_dataset(
                 bad_df,
                 contract=validate_dataset_orders_contract,
-                reference_datasets={
-                    "users": validate_dataset_users_df,
-                },
             )
 
     report = exc_info.value.report
@@ -100,7 +88,6 @@ def test_validate_dataset_fails_datatype_gate(
 def test_validate_dataset_rejects_range_failure(
     validate_dataset_orders_df,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
 ):
     bad_df = validate_dataset_orders_df.withColumn(
         "order_number",
@@ -114,9 +101,6 @@ def test_validate_dataset_rejects_range_failure(
         validate_dataset(
             bad_df,
             contract=validate_dataset_orders_contract,
-            reference_datasets={
-                "users": validate_dataset_users_df,
-            },
         )
 
     result = find_result(
@@ -134,15 +118,14 @@ def test_validate_dataset_rejects_range_failure(
 def test_validate_dataset_returns_warning_within_threshold(
     validate_dataset_orders_df,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
 ):
     contract = deepcopy(validate_dataset_orders_contract)
 
-    order_number_schema = next(
-        column for column in contract["schema"] if column["name"] == "order_number"
+    order_dow_schema = next(
+        column for column in contract["schema"] if column["name"] == "order_dow"
     )
 
-    order_number_schema["thresholds"] = {
+    order_dow_schema["thresholds"] = {
         "range": {
             "max_failed_percent": 20.0,
             "severity": "error",
@@ -150,24 +133,21 @@ def test_validate_dataset_returns_warning_within_threshold(
     }
 
     bad_df = validate_dataset_orders_df.withColumn(
-        "order_number",
+        "order_dow",
         F.when(
             F.col("order_id") == 2,
-            F.lit(0),
-        ).otherwise(F.col("order_number")),
+            F.lit(7),
+        ).otherwise(F.col("order_dow")),
     )
 
     report = validate_dataset(
         bad_df,
         contract=contract,
-        reference_datasets={
-            "users": validate_dataset_users_df,
-        },
     )
 
     result = find_result(
         report,
-        rule_name="order_number.range",
+        rule_name="order_dow.range",
     )
 
     assert result.failed_count == 1
@@ -175,7 +155,7 @@ def test_validate_dataset_returns_warning_within_threshold(
     assert result.status == ValidationStatus.WARNING
     assert result.severity == ValidationSeverity.WARNING
     assert result.passed is True
-    assert "order_number.range produced a warning" in result.message
+    assert "order_dow.range produced a warning" in result.message
 
     assert report.has_errors is False
 
@@ -183,7 +163,6 @@ def test_validate_dataset_returns_warning_within_threshold(
 def test_validate_dataset_rejects_duplicate_order_id(
     validate_dataset_orders_df,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
 ):
     duplicate = validate_dataset_orders_df.filter(F.col("order_id") == 1)
 
@@ -193,9 +172,6 @@ def test_validate_dataset_rejects_duplicate_order_id(
         validate_dataset(
             bad_df,
             contract=validate_dataset_orders_contract,
-            reference_datasets={
-                "users": validate_dataset_users_df,
-            },
         )
 
     result = find_result(
@@ -211,42 +187,9 @@ def test_validate_dataset_rejects_duplicate_order_id(
     assert "row(s) participating in duplicate key values" in result.message
 
 
-def test_validate_dataset_rejects_foreign_key_failure(
-    validate_dataset_orders_df,
-    validate_dataset_orders_contract,
-    validate_dataset_users_df,
-):
-    bad_df = validate_dataset_orders_df.withColumn(
-        "user_id",
-        F.when(
-            F.col("user_id") == 2,
-            F.lit(999),
-        ).otherwise(F.col("user_id")),
-    )
-
-    with pytest.raises(DataValidationError) as exc_info:
-        validate_dataset(
-            bad_df,
-            contract=validate_dataset_orders_contract,
-            reference_datasets={
-                "users": validate_dataset_users_df,
-            },
-        )
-
-    result = find_result(
-        exc_info.value.report,
-        rule_name="orders_user_fk",
-    )
-
-    assert result.failed_count > 0
-    assert result.status == ValidationStatus.FAILED
-    assert result.severity == ValidationSeverity.CRITICAL
-
-
 def test_validate_dataset_rejects_row_logic_failure(
     validate_dataset_orders_df,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
 ):
     bad_df = validate_dataset_orders_df.withColumn(
         "days_since_prior_order",
@@ -260,9 +203,6 @@ def test_validate_dataset_rejects_row_logic_failure(
         validate_dataset(
             bad_df,
             contract=validate_dataset_orders_contract,
-            reference_datasets={
-                "users": validate_dataset_users_df,
-            },
         )
 
     result = find_result(

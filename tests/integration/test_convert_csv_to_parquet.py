@@ -11,7 +11,6 @@ def test_convert_csv_to_parquet_writes_valid_dataset(
     spark,
     tmp_path,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
 ):
     input_path = tmp_path / "orders.csv"
     output_path = tmp_path / "bronze" / "orders"
@@ -19,11 +18,11 @@ def test_convert_csv_to_parquet_writes_valid_dataset(
     write_csv(
         input_path,
         content=(
-            "order_id,user_id,eval_set,"
-            "order_number,days_since_prior_order\n"
-            "1,1,prior,1,\n"
-            "2,1,train,2,5.0\n"
-            "3,2,test,1,\n"
+            "order_id,user_id,eval_set,order_number,"
+            "order_dow,order_hour_of_day,days_since_prior_order\n"
+            "1,1,prior,1,0,10,\n"
+            "2,1,train,2,1,11,5.0\n"
+            "3,2,test,1,2,12,\n"
         ),
     )
 
@@ -32,9 +31,6 @@ def test_convert_csv_to_parquet_writes_valid_dataset(
         input_path=input_path,
         output_path=output_path,
         contract=validate_dataset_orders_contract,
-        reference_datasets={
-            "users": validate_dataset_users_df,
-        },
     )
 
     assert result is None
@@ -47,6 +43,8 @@ def test_convert_csv_to_parquet_writes_valid_dataset(
         "user_id",
         "eval_set",
         "order_number",
+        "order_dow",
+        "order_hour_of_day",
         "days_since_prior_order",
     ]
 
@@ -55,23 +53,24 @@ def test_convert_csv_to_parquet_writes_valid_dataset(
         "user_id": "int",
         "eval_set": "string",
         "order_number": "int",
+        "order_dow": "int",
+        "order_hour_of_day": "int",
         "days_since_prior_order": "double",
     }
 
     actual_rows = [tuple(row) for row in loaded_df.orderBy("order_id").collect()]
 
     assert actual_rows == [
-        (1, 1, "prior", 1, None),
-        (2, 1, "train", 2, 5.0),
-        (3, 2, "test", 1, None),
+        (1, 1, "prior", 1, 0, 10, None),
+        (2, 1, "train", 2, 1, 11, 5.0),
+        (3, 2, "test", 1, 2, 12, None),
     ]
 
 
-def test_convert_csv_to_parquet_rejects_missing_parent_key(
+def test_convert_csv_to_parquet_rejects_row_logic_failure(
     spark,
     tmp_path,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
 ):
     input_path = tmp_path / "orders.csv"
     output_path = tmp_path / "bronze" / "orders"
@@ -79,11 +78,10 @@ def test_convert_csv_to_parquet_rejects_missing_parent_key(
     write_csv(
         input_path,
         content=(
-            "order_id,user_id,eval_set,"
-            "order_number,days_since_prior_order\n"
-            "1,1,prior,1\n"
-            "2,1,train,2,15.0\n"
-            "3,999,train,2,5.0\n"
+            "order_id,user_id,eval_set,order_number,"
+            "order_dow,order_hour_of_day,days_since_prior_order\n"
+            "1,1,prior,1,0,10,5.0\n"
+            "2,1,train,2,1,11,15.0\n"
         ),
     )
 
@@ -93,16 +91,16 @@ def test_convert_csv_to_parquet_rejects_missing_parent_key(
             input_path=input_path,
             output_path=output_path,
             contract=validate_dataset_orders_contract,
-            reference_datasets={
-                "users": validate_dataset_users_df,
-            },
         )
 
     report = exc_info.value.report
 
-    foreign_key_results = find_result(report, rule_name="orders_user_fk")
+    result = find_result(
+        report,
+        rule_name="first_order_has_no_prior_interval",
+    )
 
-    assert foreign_key_results.failed_count == 1
+    assert result.failed_count == 1
 
     assert not output_path.exists()
 
@@ -111,7 +109,6 @@ def test_convert_csv_to_parquet_rejects_missing_input_file(
     spark,
     tmp_path,
     validate_dataset_orders_contract,
-    validate_dataset_users_df,
 ):
     input_path = tmp_path / "missing.csv"
     output_path = tmp_path / "bronze" / "orders"
@@ -122,9 +119,6 @@ def test_convert_csv_to_parquet_rejects_missing_input_file(
             input_path=input_path,
             output_path=output_path,
             contract=validate_dataset_orders_contract,
-            reference_datasets={
-                "users": validate_dataset_users_df,
-            },
         )
 
     assert not output_path.exists()

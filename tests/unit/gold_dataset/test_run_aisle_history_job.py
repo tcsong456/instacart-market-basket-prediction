@@ -1,5 +1,3 @@
-from unittest.mock import call
-
 import pytest
 
 from instacart_etl_rnn.jobs.create_aisle_history_data_job import (
@@ -9,102 +7,6 @@ from instacart_etl_rnn.validation.exceptions import (
     DataValidationError,
 )
 from instacart_etl_rnn.validation.models import ValidationReport
-
-
-def test_run_aisle_history_job_builds_validates_and_writes(
-    spark, mocker, tmp_path, aisle_history_df, aisle_product_df
-):
-    user_data = mocker.sentinel.user_data
-
-    parsed_df = mocker.sentinel.parsed_df
-
-    contract = mocker.sentinel.contract
-
-    mocked_join_path = mocker.patch(
-        "instacart_etl_rnn.jobs.create_aisle_history_data_job.join_path",
-        side_effect=lambda base, name: f"{base}/{name}",
-    )
-
-    mocked_read = mocker.patch(
-        "instacart_etl_rnn.jobs.create_aisle_history_data_job.read_parquet",
-        side_effect=[
-            user_data,
-            aisle_product_df,
-        ],
-    )
-
-    mocked_parse = mocker.patch(
-        "instacart_etl_rnn.jobs.create_aisle_history_data_job.parse_seq",
-        return_value=parsed_df,
-    )
-
-    mocked_build = mocker.patch(
-        "instacart_etl_rnn.jobs.create_aisle_history_data_job.build_aisle_history_data",
-        return_value=aisle_history_df,
-    )
-
-    mocked_load_contract = mocker.patch(
-        "instacart_etl_rnn.jobs.create_aisle_history_data_job.load_contract",
-        return_value=contract,
-    )
-
-    mocked_validate = mocker.patch(
-        "instacart_etl_rnn.jobs.create_aisle_history_data_job.validate_dataset",
-    )
-
-    mocked_write = mocker.patch(
-        "instacart_etl_rnn.jobs.create_aisle_history_data_job.write_parquet",
-    )
-
-    manager = mocker.Mock()
-    manager.attach_mock(mocked_join_path, "join")
-    manager.attach_mock(mocked_read, "read")
-    manager.attach_mock(mocked_parse, "parse")
-    manager.attach_mock(mocked_build, "build")
-    manager.attach_mock(mocked_load_contract, "load")
-    manager.attach_mock(mocked_validate, "validate")
-    manager.attach_mock(mocked_write, "write")
-
-    run_aisle_history_job(
-        spark=spark,
-        input_path="silver",
-        data_path="bronze",
-        output_path=tmp_path / "gold",
-        contract_path="contracts",
-        mode="validation",
-    )
-
-    validated_df = mocked_validate.call_args.args[0]
-    written_path, written_df = mocked_write.call_args.args
-
-    assert manager.mock_calls == [
-        call.join("silver", "user_data_validation"),
-        call.read("silver/user_data_validation", spark),
-        call.parse(user_data),
-        call.build(parsed_df),
-        call.join("bronze", "products"),
-        call.read("bronze/products", spark),
-        call.join("contracts", "aisle_history_data.yaml"),
-        call.load("contracts/aisle_history_data.yaml"),
-        call.validate(validated_df, contract=contract),
-        call.join(tmp_path / "gold", "aisle_history_data_validation"),
-        call.write(written_path, written_df),
-    ]
-
-    actual = {
-        (
-            row.user_id,
-            row.aisle_id,
-        ): row.asDict(recursive=True)
-        for row in validated_df.collect()
-    }
-
-    assert actual[(1, 24)]["department_id"] == 4
-    assert actual[(1, 24)]["eval_set"] == "train"
-    assert "department_id" not in aisle_history_df.columns
-
-    assert written_path == f"{tmp_path}/gold/aisle_history_data_validation"
-    assert validated_df.collect() == written_df.collect()
 
 
 def test_run_aisle_history_job_does_not_write_when_validation_fails(

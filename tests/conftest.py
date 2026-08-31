@@ -231,22 +231,18 @@ def apply_thresholds_contract():
     }
 
 
-CONTRACT_PATH = Path(__file__).parent / "integration" / "contracts" / "orders.yaml"
+ORDERS_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "instacart_etl_rnn"
+    / "contracts"
+    / "orders.yaml"
+)
 
 
 @pytest.fixture
 def validate_dataset_orders_contract():
-    return load_contract(CONTRACT_PATH)
-
-
-@pytest.fixture
-def order_products_silver_contract():
-    return Path(__file__).parent / "integration" / "contracts"
-
-
-@pytest.fixture
-def user_data_contract_path():
-    return Path(__file__).parent / "integration" / "contracts"
+    return load_contract(ORDERS_CONTRACT_PATH)
 
 
 @pytest.fixture
@@ -274,6 +270,16 @@ def validate_dataset_orders_schema():
                 nullable=False,
             ),
             StructField(
+                "order_dow",
+                IntegerType(),
+                nullable=False,
+            ),
+            StructField(
+                "order_hour_of_day",
+                IntegerType(),
+                nullable=False,
+            ),
+            StructField(
                 "days_since_prior_order",
                 DoubleType(),
                 nullable=True,
@@ -283,40 +289,16 @@ def validate_dataset_orders_schema():
 
 
 @pytest.fixture
-def validate_dataset_users_schema():
-    return StructType(
-        [
-            StructField(
-                "user_id",
-                IntegerType(),
-                nullable=False,
-            ),
-        ]
-    )
-
-
-@pytest.fixture
 def validate_dataset_orders_df(spark, validate_dataset_orders_schema):
     return spark.createDataFrame(
         [
-            (1, 1, "prior", 1, None),
-            (2, 1, "prior", 2, 5.0),
-            (3, 1, "train", 3, 7.0),
-            (4, 2, "prior", 1, None),
-            (5, 2, "test", 2, 10.0),
+            (1, 1, "prior", 1, 0, 10, None),
+            (2, 1, "prior", 2, 1, 11, 5.0),
+            (3, 1, "train", 3, 2, 12, 7.0),
+            (4, 2, "prior", 1, 3, 13, None),
+            (5, 2, "test", 2, 4, 14, 10.0),
         ],
         schema=validate_dataset_orders_schema,
-    )
-
-
-@pytest.fixture
-def validate_dataset_users_df(spark, validate_dataset_users_schema):
-    return spark.createDataFrame(
-        [
-            (1,),
-            (2,),
-        ],
-        schema=validate_dataset_users_schema,
     )
 
 
