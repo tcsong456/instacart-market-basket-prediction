@@ -33,22 +33,22 @@ build_features() {
 }
 
 SOURCE=raw
-# for PERIOD in initial t1 t2; do
-#     echo "Building base training data for source=$SOURCE period=$PERIOD"
+for PERIOD in initial t1 t2; do
+    echo "Building base training data for source=$SOURCE period=$PERIOD"
 
-#     "$ROOT_DIR/scripts/simulation/create_order_role_split_data.sh" \
-#         "$SOURCE" "$PERIOD"
+    "$ROOT_DIR/scripts/simulation/create_order_role_split_data.sh" \
+        "$SOURCE" "$PERIOD"
 
-#     "$ROOT_DIR/scripts/feature/create_order_products_data.sh" \
-#         "$SOURCE" "$PERIOD"
+    "$ROOT_DIR/scripts/feature/create_order_products_data.sh" \
+        "$SOURCE" "$PERIOD"
 
-#     "$ROOT_DIR/scripts/simulation/create_order_simulation_split_data.sh" \
-#         "$SOURCE" "$PERIOD" "base_train"
+    "$ROOT_DIR/scripts/simulation/create_order_simulation_split_data.sh" \
+        "$SOURCE" "$PERIOD" "base_train"
 
-#     for MODE in train validation evaluation; do
-#         build_features "$SOURCE" "$PERIOD" "$MODE"
-#     done
-# done
+    for MODE in train validation evaluation; do
+        build_features "$SOURCE" "$PERIOD" "$MODE"
+    done
+done
 
 STACKING_INPUT_PERIOD="t2"
 
