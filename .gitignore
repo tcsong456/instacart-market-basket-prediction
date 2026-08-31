@@ -22,6 +22,7 @@ data/
 #Trial scripts
 trash.py
 trash/*
+.tmp_spark_test/
 
 #VS code
 .vscode/*
