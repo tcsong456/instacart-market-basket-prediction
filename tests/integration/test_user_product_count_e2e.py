@@ -49,7 +49,7 @@ def test_run_user_product_count_job_end_to_end(spark, tmp_path):
         spark,
     )
 
-    actual = {(row.user_id, row.product_id): row.count for row in result.collect()}
+    actual = {(row.user_id, row.product_id): row["count"] for row in result.collect()}
 
     assert actual == {
         (1, 10): 2,
