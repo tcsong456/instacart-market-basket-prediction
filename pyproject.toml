@@ -22,6 +22,7 @@ dependencies = [
     "pytest-mock>=3.14",
     "fsspec>=2024.0",
     "gcsfs>=2024.0",
+    "torch>=2.0"
 ]
 
 [project.optional-dependencies]
@@ -31,10 +32,10 @@ dev = [
     "pytest-cov>=6.0"
 ]
 
-[tools.setuptools.package.find]
-include = ["src"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
-[tools.pytest.ini_options]
+[tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -60,9 +61,3 @@ omit= ["*/__init__.py"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-
-[project.scripts]
-build_bronze = "instacart_etl_rnn.cli.build_bronze_parquet_dataset:main"
-build_order_products = "instacart_etl_rnn.cli.build_order_products_dataset:main"
-build_user = "instacart_etl_rnn.cli.build_user_dataset:main"
-

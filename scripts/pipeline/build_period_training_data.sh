@@ -44,7 +44,7 @@ for PERIOD in initial t1 t2; do
 
     "$ROOT_DIR/scripts/simulation/create_order_simulation_split_data.sh" \
         "$SOURCE" "$PERIOD" "base_train"
-
+    
     for MODE in train validation evaluation; do
         build_features "$SOURCE" "$PERIOD" "$MODE"
     done

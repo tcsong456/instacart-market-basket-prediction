@@ -23,6 +23,18 @@ schema:
     nullable: false
     constraints:
       minimum: 0
+    
+  - name: aisle_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 0
+
+  - name: department_id
+    type: integer
+    nullable: false
+    constraints:
+      minimum: 0
 
   - name: eval_set
     type: string
