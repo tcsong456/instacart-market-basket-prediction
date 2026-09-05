@@ -8,6 +8,12 @@ from instacart_etl_rnn.gold.create_user_product_count_data import (
 from instacart_etl_rnn.validation.dataset import validate_dataset
 from instacart_etl_rnn.validation.loader import load_contract
 
+SUPPORTED_SPLITS = {
+    "train",
+    "validation",
+    "evaluation",
+}
+
 
 def run_user_product_count_job(
     spark: SparkSession,
@@ -16,22 +22,37 @@ def run_user_product_count_job(
     contract_path: str,
     mode: str,
 ) -> None:
-    if mode not in ["train", "validation", "evaluation"]:
-        raise ValueError(
-            "mode must be either train or validation or evaluation, "
-            f"but received {mode}"
-        )
+    if mode not in SUPPORTED_SPLITS:
+        raise ValueError(f"Unsupported mode: {mode}")
 
     order_products = read_parquet(
-        join_path(input_path, f"order_products_{mode}"), spark
+        join_path(
+            input_path,
+            f"order_products_{mode}",
+        ),
+        spark,
     )
 
-    user_product_count = build_user_product_count(order_products)
+    user_product_count = build_user_product_count(
+        order_products,
+    )
 
-    contract = load_contract(join_path(contract_path, "user_product_count.yaml"))
+    contract = load_contract(
+        join_path(
+            contract_path,
+            "user_product_count.yaml",
+        )
+    )
 
-    validate_dataset(user_product_count, contract=contract)
+    validate_dataset(
+        user_product_count,
+        contract=contract,
+    )
 
     write_parquet(
-        join_path(output_path, f"user_product_count_{mode}"), user_product_count
+        join_path(
+            output_path,
+            f"user_product_count_{mode}",
+        ),
+        df=user_product_count,
     )

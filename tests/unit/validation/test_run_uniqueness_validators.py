@@ -1,3 +1,5 @@
+from unittest.mock import call
+
 import pytest
 
 from instacart_etl_rnn.validation.dataset import (
@@ -6,6 +8,70 @@ from instacart_etl_rnn.validation.dataset import (
 from instacart_etl_rnn.validation.exceptions import (
     InvalidContractError,
 )
+
+
+def test_run_uniqueness_validators_runs_unique_columns_and_grain(
+    mocker,
+):
+    df = mocker.sentinel.df
+
+    order_id_result = mocker.sentinel.order_id_result
+    grain_result = mocker.sentinel.grain_result
+
+    mocked_validate = mocker.patch(
+        "instacart_etl_rnn.validation.dataset.validate_uniqueness",
+        side_effect=[
+            order_id_result,
+            grain_result,
+        ],
+    )
+
+    contract = {
+        "dataset": {
+            "grain": [
+                "order_id",
+                "product_id",
+            ],
+        },
+        "schema": [
+            {
+                "name": "order_id",
+                "constraints": {
+                    "unique": True,
+                },
+            },
+            {
+                "name": "product_id",
+                "constraints": {
+                    "unique": False,
+                },
+            },
+        ],
+    }
+
+    results = _run_uniqueness_validators(
+        df,
+        contract=contract,
+    )
+
+    assert results == [
+        order_id_result,
+        grain_result,
+    ]
+
+    assert mocked_validate.call_args_list == [
+        call(
+            df,
+            columns=["order_id"],
+        ),
+        call(
+            df,
+            columns=[
+                "order_id",
+                "product_id",
+            ],
+        ),
+    ]
 
 
 def test_run_uniqueness_validators_does_not_repeat_single_column_grain(
@@ -46,6 +112,38 @@ def test_run_uniqueness_validators_does_not_repeat_single_column_grain(
         df,
         columns=["order_id"],
     )
+
+
+def test_run_uniqueness_validators_skips_non_unique_columns(
+    mocker,
+):
+    df = mocker.sentinel.df
+
+    mocked_validate = mocker.patch(
+        "instacart_etl_rnn.validation.dataset.validate_uniqueness",
+    )
+
+    contract = {
+        "schema": [
+            {
+                "name": "order_id",
+                "constraints": {
+                    "unique": False,
+                },
+            },
+            {
+                "name": "user_id",
+            },
+        ],
+    }
+
+    results = _run_uniqueness_validators(
+        df,
+        contract=contract,
+    )
+
+    assert results == []
+    mocked_validate.assert_not_called()
 
 
 @pytest.mark.parametrize(
