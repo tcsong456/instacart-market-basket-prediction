@@ -177,7 +177,7 @@ class BaseIterableDataset(IterableDataset, ABC):
             scanner = fragment.scanner(
                 columns=list(self.columns),
                 batch_size=self.read_batch_size,
-                use_threads=False,
+                use_threads=True,
             )
 
             for batch_index, record_batch in enumerate(scanner.to_batches()):

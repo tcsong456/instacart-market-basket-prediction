@@ -15,8 +15,8 @@ def parse_args():
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--contract-path", required=True)
     parser.add_argument("--min-word-freq", default=5, type=int)
-    parser.add_argument("--product-name-length", default=50, type=int)
-    parser.add_argument("--encode-length", default=50, type=int)
+    parser.add_argument("--product-name-length", default=30, type=int)
+    parser.add_argument("--encode-length", default=100, type=int)
     parser.add_argument(
         "--mode", choices=["train", "validation", "evaluation"], required=True
     )

@@ -20,8 +20,8 @@ def run_product_training_data_job(
     contract_path: str,
     mode: str,
     min_word_freq: int = 5,
-    product_name_length: int = 50,
-    encode_length: int = 50,
+    product_name_length: int = 30,
+    encode_length: int = 100,
 ) -> None:
     """Run the product sequence training-data pipeline.
 
