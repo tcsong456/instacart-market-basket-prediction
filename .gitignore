@@ -19,6 +19,9 @@ data/
 *.tfstate
 *.tfstate.*
 
+#.docx file
+instacart_rnn_stacking_strategy.docx
+
 #Trial scripts
 trash.py
 trash/*

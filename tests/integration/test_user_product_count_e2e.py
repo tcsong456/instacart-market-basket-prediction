@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from pyspark.sql.types import IntegerType
+
 from instacart_etl_rnn.common.io import read_parquet, write_parquet
 from instacart_etl_rnn.jobs.create_user_product_count_data_job import (
     run_user_product_count_job,
@@ -10,29 +12,27 @@ CONTRACT_PATH = (
 )
 
 
-def test_run_user_product_count_job_end_to_end(spark, tmp_path):
+def test_run_user_product_count_job_excludes_validation_target_orders(
+    spark,
+    tmp_path,
+):
     order_products = spark.createDataFrame(
         [
-            (1, 10, "prior"),
-            (1, 10, "prior"),
-            (1, 20, "prior"),
-            (1, 10, "train"),
-            (2, 10, "prior"),
-            (2, 30, "prior"),
-            (2, 30, "train"),
+            (1, 101, 1, 10),
+            (1, 101, 1, 20),
+            (1, 102, 2, 10),
+            (1, 103, 3, 10),
+            (1, 103, 3, 30),
+            (2, 201, 1, 20),
+            (2, 202, 2, 20),
         ],
-        """
-        user_id INT,
-        product_id INT,
-        eval_set STRING
-        """,
+        ["user_id", "order_id", "order_number", "product_id"],
     )
 
-    input_path = tmp_path / "silver"
-    output_path = tmp_path / "gold"
-
+    input_path = tmp_path / "snapshots"
+    output_path = tmp_path / "training"
     write_parquet(
-        str(input_path / "order_products_train"),
+        input_path / "order_products_validation",
         order_products,
     )
 
@@ -41,25 +41,19 @@ def test_run_user_product_count_job_end_to_end(spark, tmp_path):
         input_path=str(input_path),
         output_path=str(output_path),
         contract_path=str(CONTRACT_PATH),
-        mode="train",
+        mode="validation",
     )
 
     result = read_parquet(
-        output_path / "user_product_count_train",
+        output_path / "user_product_count_validation",
         spark,
     )
-
     actual = {(row.user_id, row.product_id): row["count"] for row in result.collect()}
 
     assert actual == {
         (1, 10): 2,
         (1, 20): 1,
-        (2, 10): 1,
-        (2, 30): 1,
+        (2, 20): 1,
     }
-
-    assert set(result.columns) == {
-        "user_id",
-        "product_id",
-        "count",
-    }
+    assert result.columns == ["user_id", "product_id", "count"]
+    assert isinstance(result.schema["count"].dataType, IntegerType)

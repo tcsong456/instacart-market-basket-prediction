@@ -5,39 +5,40 @@ from instacart_etl_rnn.gold.create_user_product_count_data import (
 )
 
 
-def test_build_user_product_count_counts_prior_purchases(spark):
-    df = spark.createDataFrame(
+def test_build_user_product_count_excludes_each_users_latest_order(spark):
+    order_products = spark.createDataFrame(
         [
-            (1, 10, "prior"),
-            (1, 10, "prior"),
-            (1, 20, "prior"),
-            (1, 10, "train"),
-            (2, 10, "prior"),
-            (2, 10, "prior"),
-            (2, 30, "test"),
+            (1, 101, 1, 10),
+            (1, 101, 1, 10),
+            (1, 102, 2, 10),
+            (1, 102, 2, 20),
+            (1, 103, 3, 10),
+            (1, 103, 3, 30),
+            (2, 201, 1, 40),
+            (2, 202, 2, 40),
         ],
-        ["user_id", "product_id", "eval_set"],
+        ["user_id", "order_id", "order_number", "product_id"],
     )
 
-    result = build_user_product_count(df)
+    result = build_user_product_count(order_products)
 
-    actual = {
-        (row["user_id"], row["product_id"]): row["count"] for row in result.collect()
-    }
+    actual = {(row.user_id, row.product_id): row["count"] for row in result.collect()}
 
     assert actual == {
         (1, 10): 2,
         (1, 20): 1,
-        (2, 10): 2,
+        (2, 40): 1,
     }
+    assert result.columns == ["user_id", "product_id", "count"]
+    assert isinstance(result.schema["count"].dataType, IntegerType)
 
-    assert result.columns == [
-        "user_id",
-        "product_id",
-        "count",
-    ]
 
-    assert isinstance(
-        result.schema["count"].dataType,
-        IntegerType,
+def test_build_user_product_count_returns_no_rows_without_history(spark):
+    order_products = spark.createDataFrame(
+        [(1, 101, 1, 10)],
+        ["user_id", "order_id", "order_number", "product_id"],
     )
+
+    result = build_user_product_count(order_products)
+
+    assert result.count() == 0

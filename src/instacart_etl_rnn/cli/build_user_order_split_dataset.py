@@ -3,7 +3,7 @@ import logging
 
 from instacart_etl_rnn.common.setup_logging import configure_logging
 from instacart_etl_rnn.common.spark import create_spark_session
-from instacart_etl_rnn.jobs.create_user_split_data_job import run_user_split_job
+from instacart_etl_rnn.jobs.create_user_split_data_job import run_simulation_split_job
 
 
 def parse_args():
@@ -25,7 +25,7 @@ def main() -> None:
     spark = create_spark_session("build_user_order_split_data")
 
     try:
-        run_user_split_job(
+        run_simulation_split_job(
             spark=spark,
             input_path=args.input_path,
             output_path=args.output_path,
