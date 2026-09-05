@@ -32,8 +32,8 @@ def test_parse_args_parses_required_arguments_and_defaults(
     assert args.mode == "train"
 
     assert args.min_word_freq == 5
-    assert args.product_name_length == 50
-    assert args.encode_length == 50
+    assert args.product_name_length == 30
+    assert args.encode_length == 100
 
 
 def test_parse_args_parses_optional_arguments(
