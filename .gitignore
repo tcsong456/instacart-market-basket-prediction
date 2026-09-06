@@ -26,6 +26,7 @@ instacart_rnn_stacking_strategy.docx
 trash.py
 trash/*
 .tmp_spark_test/
+**/trash_try.sh
 
 #VS code
 .vscode/*
