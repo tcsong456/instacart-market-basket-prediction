@@ -41,6 +41,7 @@ class DenseProductNameEncoder(nn.Module):
 
         self.output_dim = output_dim
         self.vocab_size = vocab_size
+        self.clamp_ohe = ClampOneHotEncoding(vocab_size)
 
         self.product_name_dense = nn.Linear(
             vocab_size,
@@ -48,14 +49,8 @@ class DenseProductNameEncoder(nn.Module):
         )
 
     def forward(self, x):
-        in_range = (x >= 0) & (x < self.vocab_size)
-        product_names = F.one_hot(
-            x.clamp(0, self.vocab_size - 1),
-            num_classes=self.vocab_size,
-        ).float()
-        product_names = product_names * in_range.unsqueeze(-1)
+        product_names = self.clamp_ohe(x)
         product_names = product_names.amax(dim=1)
-
         product_names = F.relu(self.product_name_dense(product_names))
 
         return product_names

@@ -11,7 +11,7 @@ from instacart_rnn.models.encoders import (
 )
 
 
-class InputEncoder(nn.Module):
+class ProductInputEncoder(nn.Module):
     def __init__(
         self,
         lstm_size: int,

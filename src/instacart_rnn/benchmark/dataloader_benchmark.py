@@ -46,10 +46,7 @@ def benchmark_config(
 
 
 if __name__ == "__main__":
-    configs = [
-        {"num_workers": 0} | {"read_batch_size": read_batch_size}
-        for read_batch_size in [1024, 2048, 4096, 8192, 16384]
-    ]
+    configs = [{"num_workers": 0, "read_batch_size": 4096, "batch_size": 128}]
 
     results = {}
 

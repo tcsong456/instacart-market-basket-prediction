@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 from instacart_rnn.dataset import create_product_dataloader
-from instacart_rnn.models.input_encoder import InputEncoder
+from instacart_rnn.models.product_input_encoder import ProductInputEncoder
 from instacart_rnn.models.product_rnn import ProductRNN
 from tests.unit.rnn.test_dataset import _write_training_dataset
 
@@ -25,7 +25,7 @@ def _loader_batch(tmp_path):
 
 
 def _encoder_and_model():
-    encoder = InputEncoder(lstm_size=LSTM_SIZE)
+    encoder = ProductInputEncoder(lstm_size=LSTM_SIZE)
     model = ProductRNN(
         input_size=encoder.output_dim,
         lstm_size=LSTM_SIZE,
