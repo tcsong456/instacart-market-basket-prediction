@@ -57,3 +57,24 @@ def masked_sequence_rmse(
     mean_squared_error = squared_error.sum() / sequence_lengths.sum()
 
     return torch.sqrt(mean_squared_error)
+
+
+def bce_train_loss(
+    output,
+    batch,
+):
+    return masked_sequence_bce_with_logits(
+        logits=output.logits,
+        targets=batch["next_is_ordered"],
+        sequence_lengths=(batch["sequence_loss_length"]),
+    )
+
+
+def bce_validation_loss(
+    output,
+    batch,
+):
+    return F.binary_cross_entropy_with_logits(
+        output.final_logits,
+        batch["label"].float(),
+    )
