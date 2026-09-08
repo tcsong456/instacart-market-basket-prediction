@@ -32,7 +32,7 @@ build_features() {
         "$source" "$snapshot_period" "$mode"
 }
 
-SOURCE=raw
+SOURCE="${1:-raw}"
 for PERIOD in initial t1 t2; do
     echo "Building base training data for source=$SOURCE period=$PERIOD"
 
