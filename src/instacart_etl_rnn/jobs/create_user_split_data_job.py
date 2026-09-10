@@ -6,7 +6,6 @@ from instacart_etl_rnn.common.io import read_parquet, write_parquet
 from instacart_etl_rnn.common.paths import join_path
 from instacart_etl_rnn.simulation.create_user_split import (
     add_order_role,
-    build_order_simulation_split,
     build_user_simulation_split,
 )
 from instacart_etl_rnn.validation.dataset import validate_dataset
@@ -27,9 +26,10 @@ def run_simulation_split_job(
         orders=orders,
     )
 
-    order_split = build_order_simulation_split(orders=orders, user_split=user_split)
-
-    available_orders = add_order_role(order_split, period)
+    available_orders = add_order_role(
+        orders.join(user_split, on="user_id", how="inner"),
+        period,
+    )
     available_orders.persist(storageLevel=StorageLevel.MEMORY_AND_DISK)
 
     try:

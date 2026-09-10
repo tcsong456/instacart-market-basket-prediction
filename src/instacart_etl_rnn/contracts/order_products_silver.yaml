@@ -2,8 +2,8 @@ dataset:
   name: order_products
   description: >
     Order-product level dataset enriched with deterministic user cohorts,
-    development splits, simulation periods, and train/validation
-    availability for the current simulation period.
+    development splits, and train/validation availability for the current
+    simulation period.
   grain:
     - order_id
     - product_id
@@ -107,19 +107,6 @@ schema:
       allowed_values:
         - t1
         - t2
-
-  - name: simulation_period
-    type: string
-    nullable: false
-    constraints:
-      allowed_values:
-        - initial
-        - validation
-        - t1
-        - t2
-        - new_user_pool
-        - final_holdout
-        - excluded
 
   - name: current_period
     type: string

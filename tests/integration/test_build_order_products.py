@@ -187,14 +187,6 @@ def test_build_order_products_from_real_simulation_output(
             5: (True, True, False),
             6: (False, True, False),
         }
-        assert {row.order_number: row.simulation_period for row in user_101} == {
-            1: "initial",
-            2: "initial",
-            3: "initial",
-            4: "validation",
-            5: "t1",
-            6: "t2",
-        }
     else:
         assert {row.development_split for row in user_101} == {None}
         assert {row.arrival_period for row in user_101} == {None}
@@ -206,7 +198,6 @@ def test_build_order_products_from_real_simulation_output(
             5: (False, False, True),
             6: (False, False, True),
         }
-        assert {row.simulation_period for row in user_101} == {"final_holdout"}
 
     user_202 = result.filter(F.col("user_id") == 202).orderBy("order_number").collect()
     assert len(user_202) == 4
@@ -214,7 +205,6 @@ def test_build_order_products_from_real_simulation_output(
     assert {row.development_split for row in user_202} == {None}
     assert {row.current_period for row in user_202} == {"t2"}
     assert {row.order_history for row in user_202} == {4}
-    assert {row.simulation_period for row in user_202} == {"new_user_pool"}
 
     arrival_period = user_202[0].arrival_period
     assert arrival_period in {"t1", "t2"}
@@ -297,7 +287,6 @@ def test_build_order_products_does_not_write_invalid_silver_dataset(
                 "base_train",
                 None,
                 "initial",
-                "initial",
                 True,
                 True,
                 False,
@@ -315,7 +304,6 @@ def test_build_order_products_does_not_write_invalid_silver_dataset(
         user_cohort STRING,
         development_split STRING,
         arrival_period STRING,
-        simulation_period STRING,
         current_period STRING,
         is_train_available BOOLEAN,
         is_validation_available BOOLEAN,
