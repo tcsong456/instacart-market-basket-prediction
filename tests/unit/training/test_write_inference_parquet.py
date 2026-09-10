@@ -6,12 +6,13 @@ import pytest
 import torch
 from torch import nn
 
-from instacart_rnn.training.trainer import write_inference_parquet
+from instacart_rnn.training.export import write_inference_parquet
 
 DEVICE = torch.device("cpu")
 BATCH_TENSOR_NAMES = ("user_id", "product_id", "aisle_id")
 OUTPUT_TENSOR_NAMES = ("final_states", "final_logits")
 STATE_WIDTH = 4
+REPRESENTATION_FILENAME = "tinymodel_representation.parquet"
 
 
 class TinyModel(nn.Module):
@@ -49,19 +50,18 @@ def _batch(*, x, user_ids):
 def _write_inference_parquet(*, output_path, dataloader, rows_per_write):
     model = TinyModel()
     model.linear.weight.data.fill_(0.5)
-    parquet_path = output_path / "inference.parquet"
 
     write_inference_parquet(
         model=model,
         dataloader=dataloader,
         device=DEVICE,
-        output_path=str(parquet_path),
+        output_path=str(output_path),
         rows_per_write=rows_per_write,
         batch_tensor_names=BATCH_TENSOR_NAMES,
         output_tensor_names=OUTPUT_TENSOR_NAMES,
     )
 
-    return parquet_path
+    return output_path / REPRESENTATION_FILENAME
 
 
 @pytest.mark.parametrize("rows_per_write", [0, -1])
@@ -133,7 +133,7 @@ def test_write_inference_parquet_writes_gcs_url_through_filesystem(
     fake_fs = mocker.Mock()
     fake_fs.open.side_effect = lambda path, mode: local_file.open(mode)
     mocker.patch(
-        "instacart_rnn.training.trainer.gcsfs.GCSFileSystem",
+        "instacart_rnn.training.export.gcsfs.GCSFileSystem",
         return_value=fake_fs,
     )
     batch = _batch(
@@ -145,13 +145,16 @@ def test_write_inference_parquet_writes_gcs_url_through_filesystem(
         model=TinyModel(),
         dataloader=[batch],
         device=DEVICE,
-        output_path="gs://bucket/inference.parquet",
+        output_path="gs://bucket/output",
         rows_per_write=10,
         batch_tensor_names=BATCH_TENSOR_NAMES,
         output_tensor_names=OUTPUT_TENSOR_NAMES,
     )
 
-    fake_fs.open.assert_called_once_with("gs://bucket/inference.parquet", "wb")
+    fake_fs.open.assert_called_once_with(
+        f"gs://bucket/output/{REPRESENTATION_FILENAME}",
+        "wb",
+    )
 
     table = pq.read_table(local_file)
 
