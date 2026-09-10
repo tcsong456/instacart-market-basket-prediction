@@ -4,11 +4,13 @@ import pytest
 import torch
 from torch import nn
 
+from instacart_rnn.training.checkpoint import (
+    load_checkpoint,
+    save_checkpoint,
+)
 from instacart_rnn.training.trainer import (
     Trainer,
     evaluate,
-    load_checkpoint,
-    save_checkpoint,
     train_one_epoch,
 )
 
