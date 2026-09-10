@@ -105,6 +105,54 @@ def build_user_simulation_split(
     )
 
 
+def build_order_simulation_split(
+    orders: DataFrame,
+    user_split: DataFrame,
+) -> DataFrame:
+    """Assign each order its role in the simulated model lifecycle."""
+
+    df = orders.join(
+        user_split,
+        on="user_id",
+        how="inner",
+    )
+
+    return df.withColumn(
+        "simulation_period",
+        F.when(
+            F.col("user_cohort") == "final_holdout",
+            F.lit("final_holdout"),
+        )
+        .when(
+            F.col("user_cohort") == "excluded",
+            F.lit("excluded"),
+        )
+        .when(
+            F.col("user_cohort") == "new_user",
+            F.lit("new_user_pool"),
+        )
+        .when(
+            F.col("user_cohort") == "established",
+            F.when(
+                F.col("order_number") <= F.col("order_history") - 3,
+                F.lit("initial"),
+            )
+            .when(
+                F.col("order_number") == F.col("order_history") - 2,
+                F.lit("validation"),
+            )
+            .when(
+                F.col("order_number") == F.col("order_history") - 1,
+                F.lit("t1"),
+            )
+            .when(
+                F.col("order_number") == F.col("order_history"),
+                F.lit("t2"),
+            ),
+        ),
+    )
+
+
 def add_order_role(
     df: DataFrame,
     period: str,

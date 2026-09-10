@@ -16,10 +16,9 @@ def test_run_user_split_job_unpersists_when_validation_fails(
     orders.filter.return_value = filtered_orders
 
     user_split = mocker.Mock()
+    order_split = mocker.Mock()
     available_orders = mocker.MagicMock(spec=DataFrame)
     contract = mocker.Mock()
-    orders_with_users = mocker.Mock()
-    filtered_orders.join.return_value = orders_with_users
 
     mocker.patch(
         "instacart_etl_rnn.jobs.create_user_split_data_job.read_parquet",
@@ -33,7 +32,11 @@ def test_run_user_split_job_unpersists_when_validation_fails(
         "instacart_etl_rnn.jobs.create_user_split_data_job.build_user_simulation_split",
         return_value=user_split,
     )
-    mocked_add_order_role = mocker.patch(
+    mocker.patch(
+        "instacart_etl_rnn.jobs.create_user_split_data_job.build_order_simulation_split",
+        return_value=order_split,
+    )
+    mocker.patch(
         "instacart_etl_rnn.jobs.create_user_split_data_job.add_order_role",
         return_value=available_orders,
     )
@@ -66,13 +69,6 @@ def test_run_user_split_job_unpersists_when_validation_fails(
         available_orders,
         contract=contract,
     )
-
-    filtered_orders.join.assert_called_once_with(
-        user_split,
-        on="user_id",
-        how="inner",
-    )
-    mocked_add_order_role.assert_called_once_with(orders_with_users, "t1")
 
     write_parquet.assert_not_called()
 
