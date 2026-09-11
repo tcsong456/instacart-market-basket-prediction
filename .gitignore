@@ -20,7 +20,7 @@ data/
 *.tfstate.*
 
 #.docx file
-instacart_rnn_stacking_strategy.docx
+*.docx
 
 #Trial scripts
 trash.py
