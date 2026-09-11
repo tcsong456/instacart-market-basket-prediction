@@ -72,7 +72,6 @@ def test_run_simulation_split_job_end_to_end(
         "user_cohort",
         "development_split",
         "arrival_period",
-        "simulation_period",
         "current_period",
         "is_train_available",
         "is_validation_available",
