@@ -7,9 +7,9 @@ from instacart_etl_rnn.validation.models import ValidationReport
 
 
 def test_run_user_split_job_unpersists_when_validation_fails(
+    spark,
     mocker,
 ):
-    spark = mocker.Mock()
 
     orders = mocker.MagicMock()
     filtered_orders = mocker.MagicMock()
