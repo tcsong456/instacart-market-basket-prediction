@@ -7,6 +7,8 @@ buckets = {
   "bronze"           = {}
   "silver"           = {}
   "gold"             = {}
+  "runs"             = {}
+  "models"           = {}
   "dataproc-staging" = { force_destroy = true }
   "dataproc-temp"    = { force_destroy = true }
 }

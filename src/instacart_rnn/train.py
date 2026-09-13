@@ -26,7 +26,6 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint-path",
         required=True,
     )
-
     parser.add_argument(
         "--epochs",
         type=int,
