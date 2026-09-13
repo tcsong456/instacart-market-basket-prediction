@@ -15,23 +15,29 @@ authors = [
 
 dependencies = [
     "pandas==2.2.3",
-    "pyspark==3.5.1",
     "google-cloud-storage==3.2.0",
     "numpy==1.26.4",
-    "pyyaml>=6.0",
-    "pytest-mock>=3.14",
-    "fsspec>=2024.0",
-    "gcsfs>=2024.0",
-    "pyarrow>=14.0",
-    "torch>=2.0",
-    "tqdm>=4.66"
+    "PyYAML==6.0.2",
+    "fsspec==2025.3.2",
+    "gcsfs==2025.3.2",
+    "pyarrow==20.0.0",
+    "tqdm==4.67.1",
 ]
 
 [project.optional-dependencies]
+spark = [
+    "pyspark==3.5.1",
+]
+
 dev = [
     "pytest==8.4.1",
+    "pytest-mock==3.14.1",
     "ruff==0.15.14",
-    "pytest-cov>=6.0"
+    "pytest-cov==6.2.1",
+]
+
+local-gpu = [
+    "torch==2.5.1",
 ]
 
 [tool.setuptools.packages.find]
