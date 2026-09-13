@@ -9,6 +9,7 @@ from instacart_rnn.models.model_registry import InferenceSpec, ModelSpec
 from instacart_rnn.training.runner import (
     InferenceRunConfig,
     TrainingRunConfig,
+    TrainingRunResult,
     resolve_device,
     run_inference,
     run_training,
@@ -17,8 +18,9 @@ from instacart_rnn.training.runner import (
 
 
 class TinyModel(nn.Module):
-    def __init__(self):
+    def __init__(self, lstm_size: int = 1):
         super().__init__()
+        self.lstm_size = lstm_size
         self.linear = nn.Linear(1, 1, bias=False)
 
 
@@ -56,6 +58,7 @@ def _training_config(**overrides):
         "epochs": 2,
         "batch_size": 8,
         "read_batch_size": 16,
+        "lstm_size": 32,
         "learning_rate": 0.01,
         "weight_decay": 0.1,
         "num_workers": 2,
@@ -76,6 +79,7 @@ def _inference_config(**overrides):
         "eval_path": "eval.parquet",
         "checkpoint_path": "ckpt",
         "output_path": "output",
+        "lstm_size": 32,
         "batch_size": 8,
         "read_batch_size": 16,
         "rows_per_write": 1000,
@@ -157,8 +161,9 @@ def test_run_training_fits_registered_model_with_train_and_validation_loaders(
         return_value=torch.device("cpu"),
     )
     trainer_cls = mocker.patch("instacart_rnn.training.runner.Trainer", autospec=True)
+    trainer_cls.return_value.fit.return_value = (0.25, 1)
 
-    run_training(_training_config())
+    result = run_training(_training_config())
 
     get_spec.assert_called_once_with("tiny")
     assert dataloader_calls == [
@@ -183,6 +188,8 @@ def test_run_training_fits_registered_model_with_train_and_validation_loaders(
     trainer_cls.assert_called_once()
     kwargs = trainer_cls.call_args.kwargs
     assert isinstance(kwargs["model"], TinyModel)
+    assert kwargs["model"].lstm_size == 32
+    assert kwargs["on_validation_end"] is None
     assert kwargs["train_loss_fn"] is train_loss_fn
     assert kwargs["val_loss_fn"] is validation_loss_fn
     assert kwargs["device"] == torch.device("cpu")
@@ -201,6 +208,35 @@ def test_run_training_fits_registered_model_with_train_and_validation_loaders(
         val_dataloader=val_loader,
         warm_start=True,
     )
+    assert result == TrainingRunResult(
+        best_validation_loss=0.25,
+        best_epoch=1,
+        checkpoint_path="ckpt",
+    )
+
+
+def test_run_training_forwards_validation_callback_to_trainer(mocker):
+    callback = mocker.Mock()
+
+    mocker.patch(
+        "instacart_rnn.training.runner.get_model_spec",
+        return_value=_tiny_spec(
+            dataloader_factory=lambda **kwargs: object(),
+            count_rows=lambda path: 1,
+            train_loss_fn=object(),
+            validation_loss_fn=object(),
+        ),
+    )
+    mocker.patch(
+        "instacart_rnn.training.runner.resolve_device",
+        return_value=torch.device("cpu"),
+    )
+    trainer_cls = mocker.patch("instacart_rnn.training.runner.Trainer", autospec=True)
+    trainer_cls.return_value.fit.return_value = (0.1, 0)
+
+    run_training(_training_config(on_validation_end=callback))
+
+    assert trainer_cls.call_args.kwargs["on_validation_end"] is callback
 
 
 def test_run_inference_loads_checkpoint_and_writes_representations(mocker):
@@ -245,6 +281,7 @@ def test_run_inference_loads_checkpoint_and_writes_representations(mocker):
     load_kwargs = load_ckpt.call_args.kwargs
     assert load_kwargs["path"] == "ckpt"
     assert isinstance(load_kwargs["model"], TinyModel)
+    assert load_kwargs["model"].lstm_size == 32
     assert load_kwargs["device"] == torch.device("cpu")
 
     write_parquet.assert_called_once()

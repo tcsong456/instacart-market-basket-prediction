@@ -65,7 +65,14 @@ def _mse_loss(output, batch):
     return torch.nn.functional.mse_loss(output.final_logits, batch["y"])
 
 
-def _trainer(*, checkpoint_path, epochs, early_stopping=None, val_loss_fn=None):
+def _trainer(
+    *,
+    checkpoint_path,
+    epochs,
+    early_stopping=None,
+    val_loss_fn=None,
+    on_validation_end=None,
+):
     model = TinyModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
@@ -78,6 +85,7 @@ def _trainer(*, checkpoint_path, epochs, early_stopping=None, val_loss_fn=None):
         device=DEVICE,
         epochs=epochs,
         early_stopping=early_stopping,
+        on_validation_end=on_validation_end,
     )
 
 
@@ -198,7 +206,7 @@ def test_fit_saves_best_checkpoint_and_does_not_overwrite_on_worse_loss(
         y=torch.tensor([1.0, 1.0]),
     )
 
-    trainer.fit(
+    best_validation_loss, best_epoch = trainer.fit(
         train_num_rows=2,
         val_num_rows=2,
         train_dataloader=[batch],
@@ -212,6 +220,8 @@ def test_fit_saves_best_checkpoint_and_does_not_overwrite_on_worse_loss(
     )
 
     assert val_loss_fn.calls == 3
+    assert best_epoch == 1
+    assert best_validation_loss == pytest.approx(0.4)
     assert checkpoint["epoch"] == 1
     assert checkpoint["validation_loss"] == pytest.approx(0.4)
 
@@ -229,7 +239,7 @@ def test_fit_stops_when_early_stopping_patience_is_exceeded(tmp_path):
         y=torch.tensor([1.0, 1.0]),
     )
 
-    trainer.fit(
+    best_validation_loss, best_epoch = trainer.fit(
         train_num_rows=2,
         val_num_rows=2,
         train_dataloader=[batch],
@@ -243,5 +253,43 @@ def test_fit_stops_when_early_stopping_patience_is_exceeded(tmp_path):
     )
 
     assert val_loss_fn.calls == 2
+    assert best_epoch == 0
+    assert best_validation_loss == pytest.approx(0.5)
     assert checkpoint["epoch"] == 0
     assert checkpoint["validation_loss"] == pytest.approx(0.5)
+
+
+def test_fit_saves_improving_checkpoint_before_validation_callback_raises(
+    tmp_path,
+):
+    def prune_after_first_epoch(epoch, validation_loss):
+        if epoch == 0:
+            raise RuntimeError("pruned")
+
+    trainer = _trainer(
+        checkpoint_path=tmp_path,
+        epochs=2,
+        val_loss_fn=ScriptedLoss([0.4]),
+        on_validation_end=prune_after_first_epoch,
+    )
+    batch = _batch(
+        x=torch.ones(2, 1),
+        y=torch.tensor([1.0, 1.0]),
+    )
+
+    with pytest.raises(RuntimeError, match="pruned"):
+        trainer.fit(
+            train_num_rows=2,
+            val_num_rows=2,
+            train_dataloader=[batch],
+            val_dataloader=[batch],
+        )
+
+    checkpoint = load_checkpoint(
+        path=str(tmp_path),
+        model=TinyModel(),
+        device=DEVICE,
+    )
+
+    assert checkpoint["epoch"] == 0
+    assert checkpoint["validation_loss"] == pytest.approx(0.4)

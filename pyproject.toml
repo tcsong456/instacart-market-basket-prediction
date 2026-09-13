@@ -33,6 +33,10 @@ cpu = [
     "torch==2.5.1",
 ]
 
+hpt = [
+    "optuna==5.0.0",
+]
+
 dev = [
     "pytest==8.4.1",
     "pytest-mock==3.14.1",

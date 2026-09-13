@@ -7,6 +7,8 @@ from tqdm import tqdm
 
 from instacart_rnn.training.checkpoint import load_checkpoint, save_checkpoint
 
+ValidationCallback = Callable[[int, float], None]
+
 TensorBatch = dict[str, torch.Tensor]
 
 LossFn = Callable[
@@ -174,6 +176,7 @@ class Trainer:
         early_stopping: int | None = None,
         grad_clip_norm: float | None = None,
         amp: bool = False,
+        on_validation_end: ValidationCallback | None = None,
     ):
         self.model = model.to(device)
         self.optimizer = optimizer
@@ -188,6 +191,8 @@ class Trainer:
         self.grad_clip_norm = grad_clip_norm
         self.amp = amp
         self.checkpoint_path = checkpoint_path
+
+        self.on_validation_end = on_validation_end
 
         self.scaler = torch.amp.GradScaler(
             "cuda",
@@ -213,7 +218,7 @@ class Trainer:
         train_dataloader: Iterable[TensorBatch],
         val_dataloader: Iterable[TensorBatch],
         warm_start: bool = False,
-    ) -> None:
+    ) -> tuple[float, int]:
         start_epoch = 0
         best_epoch = -1
         best_validation_loss = float("inf")
@@ -291,6 +296,14 @@ class Trainer:
             else:
                 bad_epochs += 1
 
+            if self.on_validation_end is not None:
+                self.on_validation_end(
+                    epoch,
+                    val_loss,
+                )
+
             if self.early_stopping is not None and bad_epochs >= self.early_stopping:
                 print(f"early stopping at epoch={epoch}")
-                break
+                return (best_validation_loss, best_epoch)
+
+        return (best_validation_loss, best_epoch)

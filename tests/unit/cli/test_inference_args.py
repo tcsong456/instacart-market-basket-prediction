@@ -28,6 +28,7 @@ def test_parse_args_parses_required_arguments_and_defaults(monkeypatch):
     assert args.rows_per_write == 100000
     assert args.batch_size == 512
     assert args.read_batch_size == 4096
+    assert args.lstm_size == 256
     assert args.num_workers == 0
     assert args.amp is False
     assert args.pin_memory is False
@@ -44,6 +45,8 @@ def test_parse_args_parses_optional_arguments(monkeypatch):
             "128",
             "--read-batch-size",
             "2048",
+            "--lstm-size",
+            "64",
             "--num-workers",
             "4",
             "--amp",
@@ -56,6 +59,7 @@ def test_parse_args_parses_optional_arguments(monkeypatch):
     assert args.rows_per_write == 25000
     assert args.batch_size == 128
     assert args.read_batch_size == 2048
+    assert args.lstm_size == 64
     assert args.num_workers == 4
     assert args.amp is True
     assert args.pin_memory is True

@@ -44,6 +44,11 @@ def parse_args() -> argparse.Namespace:
         default=4096,
     )
     parser.add_argument(
+        "--lstm-size",
+        type=int,
+        default=256,
+    )
+    parser.add_argument(
         "--num-workers",
         type=int,
         default=0,
@@ -70,6 +75,7 @@ def main() -> None:
         rows_per_write=args.rows_per_write,
         batch_size=args.batch_size,
         read_batch_size=args.read_batch_size,
+        lstm_size=args.lstm_size,
         num_workers=args.num_workers,
         amp=args.amp,
         pin_memory=args.pin_memory,

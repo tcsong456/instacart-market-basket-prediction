@@ -42,6 +42,11 @@ def parse_args() -> argparse.Namespace:
         default=4096,
     )
     parser.add_argument(
+        "--lstm-size",
+        type=int,
+        default=256,
+    )
+    parser.add_argument(
         "--learning-rate",
         type=float,
         default=1e-3,
@@ -61,7 +66,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
     )
-    parser.add_argument("--early-stopping", type=int, default=3)
+    parser.add_argument("--early-stopping", type=int, default=2)
     parser.add_argument(
         "--grad-clip-norm",
         type=float,
@@ -91,6 +96,7 @@ def main() -> None:
         read_batch_size=args.read_batch_size,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
+        lstm_size=args.lstm_size,
         num_workers=args.num_workers,
         seed=args.seed,
         amp=args.amp,

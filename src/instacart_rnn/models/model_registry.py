@@ -28,7 +28,7 @@ class InferenceSpec:
 
 @dataclass(frozen=True)
 class ModelSpec:
-    model_factory: Callable[[], nn.Module]
+    model_factory: Callable[[int], nn.Module]
 
     train_loss_factory: Callable[[], LossFn]
     validation_loss_factory: Callable[[], LossFn]
@@ -50,9 +50,9 @@ def _count_parquet_rows(
     ).count_rows()
 
 
-def _build_product_model() -> nn.Module:
+def _build_product_model(lstm_size: int) -> nn.Module:
     return ProductModel(
-        lstm_size=300,
+        lstm_size=lstm_size,
         dilations=[2**i for i in range(6)],
         filter_widths=[2] * 6,
         skip_channels=64,
