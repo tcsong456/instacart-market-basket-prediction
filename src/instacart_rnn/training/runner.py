@@ -16,9 +16,17 @@ from instacart_rnn.training.checkpoint import load_checkpoint
 from instacart_rnn.training.export import write_inference_parquet
 from instacart_rnn.training.trainer import (
     Trainer,
+    ValidationCallback,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TrainingRunResult:
+    best_validation_loss: float
+    best_epoch: int
+    checkpoint_path: str
 
 
 @dataclass(frozen=True)
@@ -34,6 +42,7 @@ class TrainingRunConfig:
     epochs: int
     batch_size: int
     read_batch_size: int
+    lstm_size: int
 
     learning_rate: float
     weight_decay: float = 0.0
@@ -49,6 +58,8 @@ class TrainingRunConfig:
 
     pin_memory: bool = False
 
+    on_validation_end: ValidationCallback | None = None
+
 
 @dataclass(frozen=True)
 class InferenceRunConfig:
@@ -58,6 +69,7 @@ class InferenceRunConfig:
     eval_path: str
     checkpoint_path: str
     output_path: str
+    lstm_size: int
 
     batch_size: int = 512
     read_batch_size: int = 4096
@@ -104,7 +116,7 @@ def _build_optimizer(
 
 def run_training(
     config: TrainingRunConfig,
-) -> None:
+) -> TrainingRunResult:
     """
     Execute one complete model training process.
 
@@ -135,7 +147,7 @@ def run_training(
         config.model_name,
     )
 
-    model = spec.model_factory()
+    model = spec.model_factory(config.lstm_size)
     model.to(device)
 
     train_loss_fn = spec.train_loss_factory()
@@ -201,6 +213,7 @@ def run_training(
         grad_clip_norm=config.grad_clip_norm,
         amp=config.amp,
         early_stopping=config.early_stopping,
+        on_validation_end=config.on_validation_end,
     )
 
     logger.info(
@@ -209,7 +222,7 @@ def run_training(
         config.epochs,
     )
 
-    trainer.fit(
+    best_val_loss, best_epoch = trainer.fit(
         train_num_rows=train_num_rows,
         val_num_rows=validation_num_rows,
         train_dataloader=train_dataloader,
@@ -220,6 +233,12 @@ def run_training(
     logger.info(
         "Training completed for model %s",
         config.model_name,
+    )
+
+    return TrainingRunResult(
+        best_validation_loss=best_val_loss,
+        best_epoch=best_epoch,
+        checkpoint_path=config.checkpoint_path,
     )
 
 
@@ -245,7 +264,7 @@ def run_inference(
         config.model_name,
     )
 
-    model = spec.model_factory()
+    model = spec.model_factory(config.lstm_size)
     model.to(device)
 
     logger.info(

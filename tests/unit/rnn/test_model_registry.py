@@ -38,10 +38,10 @@ def test_product_spec_model_factory_builds_configured_product_model(mocker):
         "instacart_rnn.models.model_registry.ProductModel",
     )
 
-    get_model_spec("product").model_factory()
+    get_model_spec("product").model_factory(128)
 
     constructed.assert_called_once_with(
-        lstm_size=300,
+        lstm_size=128,
         dilations=[1, 2, 4, 8, 16, 32],
         filter_widths=[2, 2, 2, 2, 2, 2],
         skip_channels=64,
