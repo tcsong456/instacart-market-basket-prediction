@@ -26,6 +26,9 @@ def test_parse_seq_parses_multiple_orders(spark):
     assert row["aisle_all"] == [[1, 2], [2, 3, 4]]
 
     assert row["aisle_set"] == [1, 2, 3, 4]
+    assert row["aisle_next"] == ["5"]
+    assert row["next_aisle_int"] == [5]
+    assert row["next_aisle_set"] == [5]
 
 
 def test_parse_seq_handles_single_order(
@@ -65,6 +68,9 @@ def test_parse_seq_handles_single_order(
         2,
         3,
     ]
+    assert row["aisle_next"] == []
+    assert row["next_aisle_int"] == []
+    assert row["next_aisle_set"] == []
 
 
 def test_parse_seq_removes_duplicate_aisle_ids(

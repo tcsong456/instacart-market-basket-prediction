@@ -15,6 +15,7 @@ SELECTED_COLUMNS = [
     "aisle_id",
     "department_id",
     "eval_set",
+    "label",
     "is_ordered_history",
     "position_in_order",
     "num_products_from_aisle",

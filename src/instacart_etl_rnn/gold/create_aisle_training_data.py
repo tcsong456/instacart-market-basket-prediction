@@ -34,7 +34,8 @@ def parse_aisle_seq_data(df: DataFrame, max_padded_length: int = 30) -> DataFram
 
     Returns:
         A DataFrame containing the aisle identifiers, evaluation split,
-        parsed and padded history/temporal arrays, and ``history_length``.
+        next-order ``label``, parsed and padded history/temporal arrays,
+        and ``history_length``.
     """
 
     for colname in PARSE_COLUMNS:
@@ -59,6 +60,7 @@ def parse_aisle_seq_data(df: DataFrame, max_padded_length: int = 30) -> DataFram
         "aisle_id",
         "department_id",
         "eval_set",
+        "label",
         "is_ordered_history",
         "position_in_order",
         "num_products_from_aisle",

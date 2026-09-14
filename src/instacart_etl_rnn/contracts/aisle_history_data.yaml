@@ -37,6 +37,16 @@ schema:
         - train
         - prior
 
+  - name: label
+    type: integer
+    nullable: false
+    description: >
+      Target indicating whether the aisle is ordered in the next order.
+    constraints:
+      allowed_values:
+        - 0
+        - 1
+
   - name: is_ordered_history
     type: string
     nullable: false

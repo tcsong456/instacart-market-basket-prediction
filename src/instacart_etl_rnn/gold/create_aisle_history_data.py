@@ -39,7 +39,31 @@ def parse_seq(df: DataFrame) -> DataFrame:
                 """
             ),
         )
+        .withColumn(
+            "aisle_next",
+            F.when(
+                F.size(F.col("aisle_raw")) == 1,
+                F.array().cast("array<string>"),
+            ).otherwise(F.array(F.element_at(F.col("aisle_raw"), -1))),
+        )
+        .withColumn(
+            "next_aisle_int",
+            F.expr(
+                """
+                flatten(
+                    transform(
+                        aisle_next,
+                        x -> transform(
+                            split(x, '_'),
+                            y -> cast(y as int)
+                        )
+                    )
+                )
+                """
+            ),
+        )
         .withColumn("aisle_set", F.array_distinct(F.flatten("aisle_all")))
+        .withColumn("next_aisle_set", F.array_distinct(F.col("next_aisle_int")))
     )
 
     return df
@@ -52,10 +76,14 @@ def build_aisle_history_data(df: DataFrame) -> DataFrame:
     constructs sequential features describing the user's interaction with
     that aisle across previous orders.
 
+    The final supplied order is treated as the prediction target through
+    ``next_aisle_set``. The resulting ``label`` indicates whether each
+    candidate aisle appears in that target order.
+
     Args:
         df: Input DataFrame produced by ``parse_seq()``, containing the
             parsed aisle history columns (``aisle_all``, ``aisle_set``,
-            etc.).
+            ``next_aisle_set``, etc.).
 
     Returns:
         DataFrame with one row per user-aisle pair and the corresponding
@@ -78,6 +106,10 @@ def build_aisle_history_data(df: DataFrame) -> DataFrame:
             ),
         )
         .withColumn("aisle_id", F.explode("aisle_set"))
+        .withColumn(
+            "label",
+            F.array_contains(F.col("next_aisle_set"), F.col("aisle_id")).cast("int"),
+        )
         .withColumn(
             "is_ordered_history",
             F.expr(

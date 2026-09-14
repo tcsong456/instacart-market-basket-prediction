@@ -2,7 +2,10 @@ import pytest
 import torch
 from torch import nn
 
-from instacart_rnn.dataset import create_product_dataloader
+from instacart_rnn.dataset import (
+    create_aisle_dataloader,
+    create_product_dataloader,
+)
 from instacart_rnn.models.model_registry import get_model_spec
 from instacart_rnn.training.losses import bce_train_loss, bce_validation_loss
 from tests.unit.rnn.test_dataset import _write_training_dataset
@@ -25,9 +28,28 @@ def test_get_model_spec_returns_product_training_stack():
     )
 
 
+def test_get_model_spec_returns_aisle_training_stack():
+    spec = get_model_spec("aisle")
+
+    assert spec.dataloader_factory is create_aisle_dataloader
+    assert spec.train_loss_factory() is bce_train_loss
+    assert spec.validation_loss_factory() is bce_validation_loss
+    assert spec.inference.batch_tensor_names == (
+        "user_id",
+        "aisle_id",
+    )
+    assert spec.inference.output_tensor_names == (
+        "final_states",
+        "final_logits",
+    )
+
+
 @pytest.mark.parametrize("model_name", ["unknown", "", "Product"])
 def test_get_model_spec_raises_for_unsupported_model(model_name):
-    with pytest.raises(ValueError, match="Supported models: product") as exc_info:
+    with pytest.raises(
+        ValueError,
+        match="Supported models: aisle, product",
+    ) as exc_info:
         get_model_spec(model_name)
 
     assert str(exc_info.value).startswith(f"Unsupported model {model_name!r}")
@@ -46,6 +68,18 @@ def test_product_spec_model_factory_builds_configured_product_model(mocker):
         filter_widths=[2, 2, 2, 2, 2, 2],
         skip_channels=64,
         residual_channels=128,
+    )
+
+
+def test_aisle_spec_model_factory_builds_configured_aisle_model(mocker):
+    constructed = mocker.patch(
+        "instacart_rnn.models.model_registry.AisleModel",
+    )
+
+    get_model_spec("aisle").model_factory(128)
+
+    constructed.assert_called_once_with(
+        lstm_size=128,
     )
 
 

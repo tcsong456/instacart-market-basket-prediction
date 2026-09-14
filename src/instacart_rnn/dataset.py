@@ -30,6 +30,22 @@ PRODUCT_TRAINING_COLUMNS: tuple[str, ...] = (
     "product_name_length",
 )
 
+AISLE_TRAINING_COLUMNS: tuple[str, ...] = (
+    "user_id",
+    "aisle_id",
+    "department_id",
+    "label",
+    "is_ordered_history",
+    "position_in_order",
+    "num_products_from_aisle",
+    "aisle_history_size",
+    "order_dows",
+    "order_hours",
+    "days_since_prior_orders",
+    "order_numbers",
+    "history_length",
+)
+
 BatchDict = dict[str, torch.Tensor]
 
 
@@ -190,8 +206,8 @@ class BaseIterableDataset(IterableDataset, ABC):
                     generator = torch.Generator()
                     generator.manual_seed(
                         self.seed
-                        + self.epoch * 1_000_003
-                        + worker_id * 10_007
+                        + self.epoch * 1000003
+                        + worker_id * 10007
                         + fragment_index * 97
                         + batch_index
                     )
@@ -268,7 +284,58 @@ class ProductIterableDataset(BaseIterableDataset):
         return batch
 
 
-def create_product_dataloader(
+class AisleIterableDataset(BaseIterableDataset):
+    def __init__(
+        self,
+        path: str | Path,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            path,
+            columns=AISLE_TRAINING_COLUMNS,
+            **kwargs,
+        )
+
+    def record_batch_to_features(self, record_batch: pa.RecordBatch) -> BatchDict:
+        def scalar(name: str, dtype: np.dtype) -> torch.Tensor:
+            return _as_tensor(_scalar_numpy(record_batch.column(name), dtype))
+
+        def sequence(name: str, dtype: np.dtype, width: int) -> torch.Tensor:
+            return _as_tensor(
+                _fixed_list_numpy(record_batch.column(name), dtype, width)
+            )
+
+        is_ordered_history = sequence("is_ordered_history", np.int64, 100)
+
+        batch: BatchDict = {
+            "user_id": scalar("user_id", np.int64),
+            "aisle_id": scalar("aisle_id", np.int64),
+            "department_id": scalar("department_id", np.int64),
+            "label": scalar("label", np.int64),
+            "position_in_order_history": sequence("position_in_order", np.int64, 100),
+            "num_products_from_aisle_history": sequence(
+                "num_products_from_aisle", np.int64, 100
+            ),
+            "history_order_size": sequence("aisle_history_size", np.int64, 100),
+            "is_ordered_history": is_ordered_history,
+            "order_dow_history": _shift_left(sequence("order_dows", np.int64, 100)),
+            "order_hour_history": _shift_left(sequence("order_hours", np.int64, 100)),
+            "days_since_prior_order_history": _shift_left(
+                sequence("days_since_prior_orders", np.int64, 100)
+            ),
+            "order_number_history": _shift_left(
+                sequence("order_numbers", np.int64, 100)
+            ),
+            "next_is_ordered": _shift_left(is_ordered_history),
+            "history_length": scalar("history_length", np.int64),
+            "sequence_loss_length": scalar("history_length", np.int64) - 1,
+        }
+
+        return batch
+
+
+def _create_dataloader(
+    dataset_cls: type[BaseIterableDataset],
     path: str | Path,
     *,
     batch_size: int = 64,
@@ -280,14 +347,7 @@ def create_product_dataloader(
     pin_memory: bool = False,
     prefetch_factor: int | None = None,
 ) -> DataLoader:
-    """Build a DataLoader that streams product-training Parquet batches.
-
-    The underlying dataset already emits mini-batches, so this sets
-    ``batch_size=None``. For training, call ``loader.dataset.set_epoch(epoch)``
-    each epoch when ``shuffle=True``.
-    """
-
-    dataset = ProductIterableDataset(
+    dataset = dataset_cls(
         path,
         read_batch_size=read_batch_size,
         batch_size=batch_size,
@@ -309,3 +369,64 @@ def create_product_dataloader(
             loader_kwargs["prefetch_factor"] = prefetch_factor
 
     return DataLoader(**loader_kwargs)
+
+
+def create_product_dataloader(
+    path: str | Path,
+    *,
+    batch_size: int = 64,
+    read_batch_size: int = 4096,
+    num_workers: int = 0,
+    drop_last: bool = True,
+    shuffle: bool = True,
+    seed: int = 42,
+    pin_memory: bool = False,
+    prefetch_factor: int | None = None,
+) -> DataLoader:
+    """Build a DataLoader that streams product-training Parquet batches.
+
+    The underlying dataset already emits mini-batches, so this sets
+    ``batch_size=None``. For training, call ``loader.dataset.set_epoch(epoch)``
+    each epoch when ``shuffle=True``.
+    """
+
+    return _create_dataloader(
+        ProductIterableDataset,
+        path,
+        batch_size=batch_size,
+        read_batch_size=read_batch_size,
+        num_workers=num_workers,
+        drop_last=drop_last,
+        shuffle=shuffle,
+        seed=seed,
+        pin_memory=pin_memory,
+        prefetch_factor=prefetch_factor,
+    )
+
+
+def create_aisle_dataloader(
+    path: str | Path,
+    *,
+    batch_size: int = 64,
+    read_batch_size: int = 4096,
+    num_workers: int = 0,
+    drop_last: bool = True,
+    shuffle: bool = True,
+    seed: int = 42,
+    pin_memory: bool = False,
+    prefetch_factor: int | None = None,
+) -> DataLoader:
+    """Build a DataLoader that streams aisle-training Parquet batches."""
+
+    return _create_dataloader(
+        AisleIterableDataset,
+        path,
+        batch_size=batch_size,
+        read_batch_size=read_batch_size,
+        num_workers=num_workers,
+        drop_last=drop_last,
+        shuffle=shuffle,
+        seed=seed,
+        pin_memory=pin_memory,
+        prefetch_factor=prefetch_factor,
+    )

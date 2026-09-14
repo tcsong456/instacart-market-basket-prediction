@@ -12,6 +12,7 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
                 5,
                 50,
                 "train",
+                1,
                 "1 0 1",
                 "2 0 3",
                 "1 2 1",
@@ -27,6 +28,7 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
         aisle_id int,
         department_id int,
         eval_set string,
+        label int,
         is_ordered_history string,
         position_in_order string,
         num_products_from_aisle string,
@@ -49,6 +51,7 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
     assert row["aisle_id"] == 5
     assert row["department_id"] == 50
     assert row["eval_set"] == "train"
+    assert row["label"] == 1
 
     assert row["is_ordered_history"] == [1, 0, 1, 0, 0]
     assert row["position_in_order"] == [2, 0, 3, 0, 0]
@@ -67,6 +70,7 @@ def test_parse_aisle_seq_data_preserves_extra_temporal_step(spark):
         "aisle_id",
         "department_id",
         "eval_set",
+        "label",
         "is_ordered_history",
         "position_in_order",
         "num_products_from_aisle",
@@ -87,6 +91,7 @@ def test_parse_aisle_seq_data_truncates_both_sequence_groups(spark):
                 5,
                 50,
                 "train",
+                1,
                 "1 1 0 1 1",
                 "1 2 0 3 4",
                 "2 2 1 3 4",
@@ -102,6 +107,7 @@ def test_parse_aisle_seq_data_truncates_both_sequence_groups(spark):
         aisle_id int,
         department_id int,
         eval_set string,
+        label int,
         is_ordered_history string,
         position_in_order string,
         num_products_from_aisle string,
@@ -141,6 +147,7 @@ def test_parse_aisle_seq_data_handles_exact_history_boundary(spark):
                 5,
                 50,
                 "train",
+                1,
                 "1 0 1 1",
                 "2 0 3 1",
                 "1 2 1 3",
@@ -156,6 +163,7 @@ def test_parse_aisle_seq_data_handles_exact_history_boundary(spark):
         aisle_id int,
         department_id int,
         eval_set string,
+        label int,
         is_ordered_history string,
         position_in_order string,
         num_products_from_aisle string,
@@ -195,6 +203,7 @@ def test_parse_aisle_seq_data_handles_empty_sequences(spark):
                 5,
                 50,
                 "train",
+                0,
                 "",
                 "",
                 "",
@@ -210,6 +219,7 @@ def test_parse_aisle_seq_data_handles_empty_sequences(spark):
         aisle_id int,
         department_id int,
         eval_set string,
+        label int,
         is_ordered_history string,
         position_in_order string,
         num_products_from_aisle string,

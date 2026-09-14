@@ -8,8 +8,10 @@ from torch import nn
 from torch.optim import Optimizer
 
 from instacart_rnn.dataset import (
+    create_aisle_dataloader,
     create_product_dataloader,
 )
+from instacart_rnn.models.aisle_model import AisleModel
 from instacart_rnn.models.product_model import ProductModel
 from instacart_rnn.training.losses import (
     bce_train_loss,
@@ -60,6 +62,12 @@ def _build_product_model(lstm_size: int) -> nn.Module:
     )
 
 
+def _build_aisle_model(lstm_size: int) -> nn.Module:
+    return AisleModel(
+        lstm_size=lstm_size,
+    )
+
+
 def _adamw(
     parameters,
     *,
@@ -85,6 +93,24 @@ MODEL_REGISTRY = {
             batch_tensor_names=(
                 "user_id",
                 "product_id",
+                "aisle_id",
+            ),
+            output_tensor_names=(
+                "final_states",
+                "final_logits",
+            ),
+        ),
+    ),
+    "aisle": ModelSpec(
+        model_factory=_build_aisle_model,
+        train_loss_factory=lambda: bce_train_loss,
+        validation_loss_factory=lambda: bce_validation_loss,
+        dataloader_factory=create_aisle_dataloader,
+        count_rows=_count_parquet_rows,
+        optimizer_factory=_adamw,
+        inference=InferenceSpec(
+            batch_tensor_names=(
+                "user_id",
                 "aisle_id",
             ),
             output_tensor_names=(
