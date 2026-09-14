@@ -18,6 +18,7 @@ def test_run_aisle_training_data_job_end_to_end(spark, tmp_path):
                 10,
                 1,
                 "train",
+                1,
                 "1 0",
                 "1 0",
                 "2 0",
@@ -32,6 +33,7 @@ def test_run_aisle_training_data_job_end_to_end(spark, tmp_path):
                 20,
                 2,
                 "train",
+                0,
                 "0 1",
                 "0 1",
                 "0 1",
@@ -47,6 +49,7 @@ def test_run_aisle_training_data_job_end_to_end(spark, tmp_path):
         aisle_id INT,
         department_id INT,
         eval_set STRING,
+        label INT,
         is_ordered_history STRING,
         position_in_order STRING,
         num_products_from_aisle STRING,
@@ -90,6 +93,7 @@ def test_run_aisle_training_data_job_end_to_end(spark, tmp_path):
     aisle_10 = actual[(1, 10)]
     assert aisle_10["department_id"] == 1
     assert aisle_10["eval_set"] == "train"
+    assert aisle_10["label"] == 1
     assert aisle_10["history_length"] == 2
     assert len(aisle_10["is_ordered_history"]) == 100
     assert aisle_10["is_ordered_history"][:2] == [1, 0]
@@ -100,6 +104,7 @@ def test_run_aisle_training_data_job_end_to_end(spark, tmp_path):
     assert aisle_10["days_since_prior_orders"][:3] == [-1.0, 5.0, 7.0]
 
     aisle_20 = actual[(1, 20)]
+    assert aisle_20["label"] == 0
     assert aisle_20["is_ordered_history"][:2] == [0, 1]
     assert aisle_20["position_in_order"][:2] == [0, 1]
     assert aisle_20["num_products_from_aisle"][:2] == [0, 1]

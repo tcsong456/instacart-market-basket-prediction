@@ -37,6 +37,14 @@ schema:
         - train
         - prior
 
+  - name: label
+    type: integer
+    nullable: false
+    constraints:
+      allowed_values:
+        - 0
+        - 1
+
   - name: is_ordered_history
     type: array<integer>
     nullable: false
