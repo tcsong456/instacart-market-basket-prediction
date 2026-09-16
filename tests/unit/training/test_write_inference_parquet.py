@@ -6,6 +6,7 @@ import pytest
 import torch
 from torch import nn
 
+from instacart_rnn.models.representation import binary_output_transform
 from instacart_rnn.training.export import write_inference_parquet
 
 DEVICE = torch.device("cpu")
@@ -59,6 +60,7 @@ def _write_inference_parquet(*, output_path, dataloader, rows_per_write):
         rows_per_write=rows_per_write,
         batch_tensor_names=BATCH_TENSOR_NAMES,
         output_tensor_names=OUTPUT_TENSOR_NAMES,
+        output_transform=binary_output_transform(),
     )
 
     return output_path / REPRESENTATION_FILENAME
@@ -83,6 +85,7 @@ def test_write_inference_parquet_rejects_non_positive_rows_per_write(
             rows_per_write=rows_per_write,
             batch_tensor_names=BATCH_TENSOR_NAMES,
             output_tensor_names=OUTPUT_TENSOR_NAMES,
+            output_transform=binary_output_transform(),
         )
 
 
@@ -149,6 +152,7 @@ def test_write_inference_parquet_writes_gcs_url_through_filesystem(
         rows_per_write=10,
         batch_tensor_names=BATCH_TENSOR_NAMES,
         output_tensor_names=OUTPUT_TENSOR_NAMES,
+        output_transform=binary_output_transform(),
     )
 
     fake_fs.open.assert_called_once_with(
