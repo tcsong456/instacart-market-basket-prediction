@@ -46,6 +46,18 @@ AISLE_TRAINING_COLUMNS: tuple[str, ...] = (
     "history_length",
 )
 
+REORDER_SIZE_COLUMNS: tuple[str, ...] = (
+    "user_id",
+    "order_sizes",
+    "reorder_sizes",
+    "label",
+    "order_dows",
+    "order_hours",
+    "days_since_prior_orders",
+    "order_numbers",
+    "history_length",
+)
+
 BatchDict = dict[str, torch.Tensor]
 
 
@@ -334,6 +346,50 @@ class AisleIterableDataset(BaseIterableDataset):
         return batch
 
 
+class ReorderSizeIterableDataset(BaseIterableDataset):
+    def __init__(
+        self,
+        path: str | Path,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            path,
+            columns=REORDER_SIZE_COLUMNS,
+            **kwargs,
+        )
+
+    def record_batch_to_features(self, record_batch: pa.RecordBatch) -> BatchDict:
+        def scalar(name: str, dtype: np.dtype) -> torch.Tensor:
+            return _as_tensor(_scalar_numpy(record_batch.column(name), dtype))
+
+        def sequence(name: str, dtype: np.dtype, width: int) -> torch.Tensor:
+            return _as_tensor(
+                _fixed_list_numpy(record_batch.column(name), dtype, width)
+            )
+
+        reorder_size_history = sequence("reorder_sizes", np.int64, 100)
+
+        batch: BatchDict = {
+            "user_id": scalar("user_id", np.int64),
+            "label": scalar("label", np.int64),
+            "history_order_size": sequence("order_sizes", np.int64, 100),
+            "reorder_size_history": reorder_size_history,
+            "order_dow_history": _shift_left(sequence("order_dows", np.int64, 100)),
+            "order_hour_history": _shift_left(sequence("order_hours", np.int64, 100)),
+            "days_since_prior_order_history": _shift_left(
+                sequence("days_since_prior_orders", np.int64, 100)
+            ),
+            "order_number_history": _shift_left(
+                sequence("order_numbers", np.int64, 100)
+            ),
+            "next_reorder_size": _shift_left(reorder_size_history),
+            "history_length": scalar("history_length", np.int64),
+            "sequence_loss_length": scalar("history_length", np.int64) - 1,
+        }
+
+        return batch
+
+
 def _create_dataloader(
     dataset_cls: type[BaseIterableDataset],
     path: str | Path,
@@ -420,6 +476,34 @@ def create_aisle_dataloader(
 
     return _create_dataloader(
         AisleIterableDataset,
+        path,
+        batch_size=batch_size,
+        read_batch_size=read_batch_size,
+        num_workers=num_workers,
+        drop_last=drop_last,
+        shuffle=shuffle,
+        seed=seed,
+        pin_memory=pin_memory,
+        prefetch_factor=prefetch_factor,
+    )
+
+
+def create_reorder_size_dataloader(
+    path: str | Path,
+    *,
+    batch_size: int = 64,
+    read_batch_size: int = 4096,
+    num_workers: int = 0,
+    drop_last: bool = True,
+    shuffle: bool = True,
+    seed: int = 42,
+    pin_memory: bool = False,
+    prefetch_factor: int | None = None,
+) -> DataLoader:
+    """Build a DataLoader that streams reorder_size-training Parquet batches."""
+
+    return _create_dataloader(
+        ReorderSizeIterableDataset,
         path,
         batch_size=batch_size,
         read_batch_size=read_batch_size,

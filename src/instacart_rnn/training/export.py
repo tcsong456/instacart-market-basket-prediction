@@ -8,6 +8,7 @@ import torch
 from torch import nn
 
 from instacart_etl_rnn.common.paths import is_gcs_url, join_path
+from instacart_rnn.models.model_registry import InferenceTransform
 from instacart_rnn.training.trainer import TensorBatch, move_batch_to_device
 
 
@@ -115,24 +116,11 @@ def iter_inference(
     amp: bool = False,
     batch_tensor_names: tuple[str, ...] = (),
     output_tensor_names: tuple[str, ...] = (),
+    output_transform: InferenceTransform | None = None,
 ):
-    """
-    Yield CPU inference tensors one model batch at a time.
-
-    Args:
-        model: Model used for inference.
-        dataloader: Iterable yielding model-ready tensor batches.
-        device: Device used for model inference.
-        amp: Whether to enable CUDA automatic mixed precision.
-
-    Yields:
-        CPU tensors required for downstream stacking.
-    """
     model.eval()
 
     amp_enabled = amp and device.type == "cuda"
-
-    collected: TensorBatch = {}
 
     for batch in dataloader:
         batch = move_batch_to_device(
@@ -146,20 +134,21 @@ def iter_inference(
         ):
             output = model(batch)
 
-        for name in batch_tensor_names:
-            collected[name] = batch[name].detach().cpu()
-
-        for name in output_tensor_names:
-            collected[name] = (
-                _get_output_tensor(
-                    output,
-                    name,
-                )
-                .detach()
-                .cpu()
+        if output_transform is not None:
+            output_tensors = output_transform(
+                output,
+                batch,
             )
+        else:
+            output_tensors = {
+                name: _get_output_tensor(output, name) for name in output_tensor_names
+            }
 
-        collected["final_probabilities"] = torch.sigmoid(collected["final_logits"])
+        collected = {name: batch[name].detach().cpu() for name in batch_tensor_names}
+
+        collected.update(
+            {name: tensor.detach().cpu() for name, tensor in output_tensors.items()}
+        )
 
         yield collected
 
@@ -175,6 +164,7 @@ def write_inference_parquet(
     compression: str = "snappy",
     batch_tensor_names: tuple[str, ...] = (),
     output_tensor_names: tuple[str, ...] = (),
+    output_transform: InferenceTransform | None = None,
     progress: Any | None = None,
 ) -> None:
     """
@@ -212,6 +202,7 @@ def write_inference_parquet(
             amp=amp,
             batch_tensor_names=batch_tensor_names,
             output_tensor_names=output_tensor_names,
+            output_transform=output_transform,
         ):
             if buffer is None:
                 buffer = {name: [] for name in inference_batch}

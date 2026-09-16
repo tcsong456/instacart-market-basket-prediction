@@ -6,7 +6,12 @@ import torch.nn.functional as F
 from instacart_rnn.training.losses import (
     bce_train_loss,
     bce_validation_loss,
+    gaussian_mixture_nll,
+    gmm_nll,
+    gmm_train_loss,
+    gmm_validation_loss,
     masked_sequence_bce_with_logits,
+    masked_sequence_gmm_nll,
     masked_sequence_rmse,
 )
 
@@ -245,6 +250,92 @@ def test_bce_validation_loss_uses_final_logits_and_label():
     expected = F.binary_cross_entropy_with_logits(
         output.final_logits,
         batch["label"].float(),
+    )
+
+    assert torch.allclose(loss, expected)
+
+
+def test_masked_sequence_gmm_nll_ignores_padded_timesteps():
+    means = torch.zeros(2, 2, 1)
+    log_variances = torch.zeros(2, 2, 1)
+    mixing_logits = torch.zeros(2, 2, 1)
+    targets = torch.tensor(
+        [
+            [0.0, 100.0],
+            [0.0, 100.0],
+        ]
+    )
+
+    loss = masked_sequence_gmm_nll(
+        means=means,
+        log_variances=log_variances,
+        mixing_logits=mixing_logits,
+        targets=targets,
+        sequence_lengths=torch.tensor([1, 1]),
+    )
+    expected = gaussian_mixture_nll(
+        means=means[:, :1],
+        log_variances=log_variances[:, :1],
+        mixing_logits=mixing_logits[:, :1],
+        targets=targets[:, :1].unsqueeze(-1),
+    ).mean()
+
+    assert torch.allclose(loss, expected)
+
+
+def test_gmm_train_loss_uses_next_reorder_size_and_sequence_loss_length():
+    output = SimpleNamespace(
+        means=torch.zeros(2, 3, 1),
+        log_variances=torch.zeros(2, 3, 1),
+        mixing_logits=torch.zeros(2, 3, 1),
+        final_means=torch.ones(2, 1) * 50,
+        final_log_variances=torch.zeros(2, 1),
+        final_mixing_logits=torch.zeros(2, 1),
+    )
+    batch = {
+        "next_reorder_size": torch.tensor(
+            [
+                [0.0, 1.0, 99.0],
+                [2.0, 99.0, 99.0],
+            ]
+        ),
+        "label": torch.zeros(2),
+        "sequence_loss_length": torch.tensor([2, 1]),
+    }
+
+    loss = gmm_train_loss(output, batch)
+    expected = masked_sequence_gmm_nll(
+        means=output.means,
+        log_variances=output.log_variances,
+        mixing_logits=output.mixing_logits,
+        targets=batch["next_reorder_size"],
+        sequence_lengths=batch["sequence_loss_length"],
+    )
+
+    assert torch.allclose(loss, expected)
+
+
+def test_gmm_validation_loss_uses_final_mixture_params_and_label():
+    output = SimpleNamespace(
+        means=torch.ones(2, 3, 1) * 99,
+        log_variances=torch.zeros(2, 3, 1),
+        mixing_logits=torch.zeros(2, 3, 1),
+        final_means=torch.zeros(2, 1),
+        final_log_variances=torch.zeros(2, 1),
+        final_mixing_logits=torch.zeros(2, 1),
+    )
+    batch = {
+        "next_reorder_size": torch.ones(2, 3),
+        "label": torch.tensor([0.0, 1.0]),
+        "sequence_loss_length": torch.tensor([1, 1]),
+    }
+
+    loss = gmm_validation_loss(output, batch)
+    expected = gmm_nll(
+        means=output.final_means,
+        log_variances=output.final_log_variances,
+        mixing_logits=output.final_mixing_logits,
+        targets=batch["label"],
     )
 
     assert torch.allclose(loss, expected)
