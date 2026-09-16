@@ -49,6 +49,11 @@ def parse_args() -> argparse.Namespace:
         default=256,
     )
     parser.add_argument(
+        "--max-candidate",
+        type=int,
+        default=24,
+    )
+    parser.add_argument(
         "--num-workers",
         type=int,
         default=0,
@@ -76,6 +81,7 @@ def main() -> None:
         batch_size=args.batch_size,
         read_batch_size=args.read_batch_size,
         lstm_size=args.lstm_size,
+        max_candidate=args.max_candidate,
         num_workers=args.num_workers,
         amp=args.amp,
         pin_memory=args.pin_memory,

@@ -5,9 +5,19 @@ from torch import nn
 from instacart_rnn.dataset import (
     create_aisle_dataloader,
     create_product_dataloader,
+    create_reorder_size_dataloader,
 )
 from instacart_rnn.models.model_registry import get_model_spec
-from instacart_rnn.training.losses import bce_train_loss, bce_validation_loss
+from instacart_rnn.models.representation import (
+    binary_output_transform,
+    gmm_output_transform,
+)
+from instacart_rnn.training.losses import (
+    bce_train_loss,
+    bce_validation_loss,
+    gmm_train_loss,
+    gmm_validation_loss,
+)
 from tests.unit.rnn.test_dataset import _write_training_dataset
 
 
@@ -26,6 +36,7 @@ def test_get_model_spec_returns_product_training_stack():
         "final_states",
         "final_logits",
     )
+    assert spec.inference.output_transform_factory is binary_output_transform
 
 
 def test_get_model_spec_returns_aisle_training_stack():
@@ -42,13 +53,25 @@ def test_get_model_spec_returns_aisle_training_stack():
         "final_states",
         "final_logits",
     )
+    assert spec.inference.output_transform_factory is binary_output_transform
+
+
+def test_get_model_spec_returns_reorder_size_gmm_training_stack():
+    spec = get_model_spec("reorder_size_gmm")
+
+    assert spec.dataloader_factory is create_reorder_size_dataloader
+    assert spec.train_loss_factory() is gmm_train_loss
+    assert spec.validation_loss_factory() is gmm_validation_loss
+    assert spec.inference.batch_tensor_names == ("user_id",)
+    assert spec.inference.output_tensor_names == ("final_states",)
+    assert spec.inference.output_transform_factory is gmm_output_transform
 
 
 @pytest.mark.parametrize("model_name", ["unknown", "", "Product"])
 def test_get_model_spec_raises_for_unsupported_model(model_name):
     with pytest.raises(
         ValueError,
-        match="Supported models: aisle, product",
+        match="Supported models: aisle, product, reorder_size_gmm",
     ) as exc_info:
         get_model_spec(model_name)
 
@@ -77,6 +100,18 @@ def test_aisle_spec_model_factory_builds_configured_aisle_model(mocker):
     )
 
     get_model_spec("aisle").model_factory(128)
+
+    constructed.assert_called_once_with(
+        lstm_size=128,
+    )
+
+
+def test_reorder_size_gmm_spec_model_factory_builds_configured_model(mocker):
+    constructed = mocker.patch(
+        "instacart_rnn.models.model_registry.ReorderSizeGmmModel",
+    )
+
+    get_model_spec("reorder_size_gmm").model_factory(128)
 
     constructed.assert_called_once_with(
         lstm_size=128,

@@ -74,6 +74,7 @@ class InferenceRunConfig:
     batch_size: int = 512
     read_batch_size: int = 4096
     rows_per_write: int = 100000
+    max_candidate: int = 24
 
     num_workers: int = 0
     pin_memory: bool = False
@@ -299,6 +300,12 @@ def run_inference(
         num_rows,
     )
 
+    output_transform = None
+    if spec.inference.output_transform_factory is not None:
+        output_transform = spec.inference.output_transform_factory(
+            max_candidate=config.max_candidate,
+        )
+
     with tqdm(
         total=num_rows,
         unit="rows",
@@ -316,6 +323,7 @@ def run_inference(
             progress=progress,
             batch_tensor_names=spec.inference.batch_tensor_names,
             output_tensor_names=spec.inference.output_tensor_names,
+            output_transform=output_transform,
         )
 
     logger.info(

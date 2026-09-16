@@ -10,22 +10,39 @@ from torch.optim import Optimizer
 from instacart_rnn.dataset import (
     create_aisle_dataloader,
     create_product_dataloader,
+    create_reorder_size_dataloader,
 )
 from instacart_rnn.models.aisle_model import AisleModel
 from instacart_rnn.models.product_model import ProductModel
+from instacart_rnn.models.reorder_size_gmm_model import ReorderSizeGmmModel
+from instacart_rnn.models.representation import (
+    binary_output_transform,
+    gmm_output_transform,
+)
 from instacart_rnn.training.losses import (
     bce_train_loss,
     bce_validation_loss,
+    gmm_train_loss,
+    gmm_validation_loss,
 )
 
 TensorBatch = dict[str, torch.Tensor]
 LossFn = Callable[[Any, TensorBatch], torch.Tensor]
 
 
+InferenceTransform = Callable[
+    [Any, TensorBatch],
+    dict[str, torch.Tensor],
+]
+
+InferenceTransformFactory = Callable[..., InferenceTransform]
+
+
 @dataclass(frozen=True)
 class InferenceSpec:
     batch_tensor_names: tuple[str, ...]
     output_tensor_names: tuple[str, ...]
+    output_transform_factory: InferenceTransformFactory | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +85,10 @@ def _build_aisle_model(lstm_size: int) -> nn.Module:
     )
 
 
+def _build_reorder_size_gmm(lstm_size: int) -> nn.Module:
+    return ReorderSizeGmmModel(lstm_size=lstm_size)
+
+
 def _adamw(
     parameters,
     *,
@@ -99,6 +120,7 @@ MODEL_REGISTRY = {
                 "final_states",
                 "final_logits",
             ),
+            output_transform_factory=binary_output_transform,
         ),
     ),
     "aisle": ModelSpec(
@@ -117,6 +139,20 @@ MODEL_REGISTRY = {
                 "final_states",
                 "final_logits",
             ),
+            output_transform_factory=binary_output_transform,
+        ),
+    ),
+    "reorder_size_gmm": ModelSpec(
+        model_factory=_build_reorder_size_gmm,
+        train_loss_factory=lambda: gmm_train_loss,
+        validation_loss_factory=lambda: gmm_validation_loss,
+        dataloader_factory=create_reorder_size_dataloader,
+        count_rows=_count_parquet_rows,
+        optimizer_factory=_adamw,
+        inference=InferenceSpec(
+            batch_tensor_names=("user_id",),
+            output_tensor_names=("final_states",),
+            output_transform_factory=gmm_output_transform,
         ),
     ),
 }
