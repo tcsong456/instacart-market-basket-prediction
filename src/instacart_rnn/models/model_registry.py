@@ -15,6 +15,7 @@ from instacart_rnn.dataset import (
 from instacart_rnn.models.aisle_model import AisleModel
 from instacart_rnn.models.product_model import ProductModel
 from instacart_rnn.models.reorder_size_gmm_model import ReorderSizeGmmModel
+from instacart_rnn.models.reorder_size_model import ReorderSizeRNNModel
 from instacart_rnn.models.representation import (
     binary_output_transform,
     gmm_output_transform,
@@ -24,6 +25,8 @@ from instacart_rnn.training.losses import (
     bce_validation_loss,
     gmm_train_loss,
     gmm_validation_loss,
+    rmse_train_loss,
+    rmse_validation_loss,
 )
 
 TensorBatch = dict[str, torch.Tensor]
@@ -87,6 +90,10 @@ def _build_aisle_model(lstm_size: int) -> nn.Module:
 
 def _build_reorder_size_gmm(lstm_size: int) -> nn.Module:
     return ReorderSizeGmmModel(lstm_size=lstm_size)
+
+
+def _build_reorder_size_rnn(lstm_size: int) -> nn.Module:
+    return ReorderSizeRNNModel(lstm_size=lstm_size)
 
 
 def _adamw(
@@ -153,6 +160,21 @@ MODEL_REGISTRY = {
             batch_tensor_names=("user_id",),
             output_tensor_names=("final_states",),
             output_transform_factory=gmm_output_transform,
+        ),
+    ),
+    "reorder_size_rnn": ModelSpec(
+        model_factory=_build_reorder_size_rnn,
+        train_loss_factory=lambda: rmse_train_loss,
+        validation_loss_factory=lambda: rmse_validation_loss,
+        dataloader_factory=create_reorder_size_dataloader,
+        count_rows=_count_parquet_rows,
+        optimizer_factory=_adamw,
+        inference=InferenceSpec(
+            batch_tensor_names=("user_id",),
+            output_tensor_names=(
+                "final_states",
+                "final_predictions",
+            ),
         ),
     ),
 }

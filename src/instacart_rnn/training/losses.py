@@ -221,6 +221,26 @@ def bce_validation_loss(
     )
 
 
+def rmse_train_loss(output, batch):
+    return masked_sequence_rmse(
+        y_hat=output.predictions,
+        y=batch["next_reorder_size"],
+        sequence_lengths=(batch["sequence_loss_length"]),
+    )
+
+
+def rmse_validation_loss(
+    output,
+    batch,
+):
+    return torch.sqrt(
+        F.mse_loss(
+            output.final_predictions,
+            batch["label"].float(),
+        )
+    )
+
+
 def gmm_train_loss(
     output,
     batch,

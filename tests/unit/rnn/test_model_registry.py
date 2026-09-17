@@ -17,6 +17,8 @@ from instacart_rnn.training.losses import (
     bce_validation_loss,
     gmm_train_loss,
     gmm_validation_loss,
+    rmse_train_loss,
+    rmse_validation_loss,
 )
 from tests.unit.rnn.test_dataset import _write_training_dataset
 
@@ -67,11 +69,25 @@ def test_get_model_spec_returns_reorder_size_gmm_training_stack():
     assert spec.inference.output_transform_factory is gmm_output_transform
 
 
+def test_get_model_spec_returns_reorder_size_rnn_training_stack():
+    spec = get_model_spec("reorder_size_rnn")
+
+    assert spec.dataloader_factory is create_reorder_size_dataloader
+    assert spec.train_loss_factory() is rmse_train_loss
+    assert spec.validation_loss_factory() is rmse_validation_loss
+    assert spec.inference.batch_tensor_names == ("user_id",)
+    assert spec.inference.output_tensor_names == (
+        "final_states",
+        "final_predictions",
+    )
+    assert spec.inference.output_transform_factory is None
+
+
 @pytest.mark.parametrize("model_name", ["unknown", "", "Product"])
 def test_get_model_spec_raises_for_unsupported_model(model_name):
     with pytest.raises(
         ValueError,
-        match="Supported models: aisle, product, reorder_size_gmm",
+        match="Supported models: aisle, product, reorder_size_gmm, reorder_size_rnn",
     ) as exc_info:
         get_model_spec(model_name)
 
@@ -112,6 +128,18 @@ def test_reorder_size_gmm_spec_model_factory_builds_configured_model(mocker):
     )
 
     get_model_spec("reorder_size_gmm").model_factory(128)
+
+    constructed.assert_called_once_with(
+        lstm_size=128,
+    )
+
+
+def test_reorder_size_rnn_spec_model_factory_builds_configured_model(mocker):
+    constructed = mocker.patch(
+        "instacart_rnn.models.model_registry.ReorderSizeRNNModel",
+    )
+
+    get_model_spec("reorder_size_rnn").model_factory(128)
 
     constructed.assert_called_once_with(
         lstm_size=128,
