@@ -76,6 +76,11 @@ def _to_arrow_table(
                 tensors["final_probabilities"].numpy(),
                 type=pa.float32(),
             )
+        elif name == "final_predictions":
+            output_table[name] = pa.array(
+                tensors[name].numpy(),
+                type=pa.float32(),
+            )
         else:
             raise KeyError(
                 "Only final_states and final_logits "

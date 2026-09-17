@@ -13,6 +13,8 @@ from instacart_rnn.training.losses import (
     masked_sequence_bce_with_logits,
     masked_sequence_gmm_nll,
     masked_sequence_rmse,
+    rmse_train_loss,
+    rmse_validation_loss,
 )
 
 
@@ -250,6 +252,59 @@ def test_bce_validation_loss_uses_final_logits_and_label():
     expected = F.binary_cross_entropy_with_logits(
         output.final_logits,
         batch["label"].float(),
+    )
+
+    assert torch.allclose(loss, expected)
+
+
+def test_rmse_train_loss_uses_next_reorder_size_and_sequence_loss_length():
+    output = SimpleNamespace(
+        predictions=torch.tensor(
+            [
+                [0.0, 1.0, 99.0],
+                [2.0, 99.0, 99.0],
+            ]
+        ),
+        final_predictions=torch.ones(2) * 50,
+    )
+    batch = {
+        "next_reorder_size": torch.tensor(
+            [
+                [0.0, 1.0, 99.0],
+                [2.0, 99.0, 99.0],
+            ]
+        ),
+        "label": torch.zeros(2),
+        "sequence_loss_length": torch.tensor([2, 1]),
+    }
+
+    loss = rmse_train_loss(output, batch)
+    expected = masked_sequence_rmse(
+        y=batch["next_reorder_size"],
+        y_hat=output.predictions,
+        sequence_lengths=batch["sequence_loss_length"],
+    )
+
+    assert torch.allclose(loss, expected)
+
+
+def test_rmse_validation_loss_uses_final_predictions_and_label():
+    output = SimpleNamespace(
+        predictions=torch.ones(2, 3) * 99,
+        final_predictions=torch.tensor([1.0, 3.0]),
+    )
+    batch = {
+        "next_reorder_size": torch.ones(2, 3),
+        "label": torch.tensor([1.0, 0.0]),
+        "sequence_loss_length": torch.tensor([1, 1]),
+    }
+
+    loss = rmse_validation_loss(output, batch)
+    expected = torch.sqrt(
+        F.mse_loss(
+            output.final_predictions,
+            batch["label"].float(),
+        )
     )
 
     assert torch.allclose(loss, expected)

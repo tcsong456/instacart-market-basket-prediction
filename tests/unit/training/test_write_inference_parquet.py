@@ -164,3 +164,51 @@ def test_write_inference_parquet_writes_gcs_url_through_filesystem(
 
     assert table.num_rows == 1
     assert table.column("user_id").to_pylist() == [11]
+
+
+class TinyRegressionModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear = nn.Linear(1, 1, bias=False)
+
+    def forward(self, batch):
+        pred = self.linear(batch["x"]).squeeze(-1)
+
+        return SimpleNamespace(
+            predictions=pred.unsqueeze(-1).expand(-1, 2).contiguous(),
+            final_predictions=pred,
+            final_states=pred.unsqueeze(-1)
+            .expand(
+                -1,
+                STATE_WIDTH,
+            )
+            .contiguous(),
+        )
+
+
+def test_write_inference_parquet_writes_final_predictions(tmp_path):
+    model = TinyRegressionModel()
+    model.linear.weight.data.fill_(0.5)
+    batch = _batch(
+        x=torch.tensor([[0.0], [2.0], [4.0]]),
+        user_ids=torch.tensor([11, 22, 33]),
+    )
+
+    write_inference_parquet(
+        model=model,
+        dataloader=[batch],
+        device=DEVICE,
+        output_path=str(tmp_path),
+        rows_per_write=10,
+        batch_tensor_names=("user_id",),
+        output_tensor_names=("final_states", "final_predictions"),
+    )
+
+    table = pq.read_table(tmp_path / "tinyregressionmodel_representation.parquet")
+
+    assert table.num_rows == 3
+    assert table.column("user_id").to_pylist() == [11, 22, 33]
+    assert "final_probabilities" not in table.column_names
+    assert table.column("final_predictions").to_pylist() == pytest.approx(
+        [0.0, 1.0, 2.0]
+    )
