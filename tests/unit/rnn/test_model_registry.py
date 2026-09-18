@@ -9,6 +9,7 @@ from instacart_rnn.dataset import (
 )
 from instacart_rnn.models.model_registry import get_model_spec
 from instacart_rnn.models.representation import (
+    GMM_OUTPUT_TENSOR_NAMES,
     binary_output_transform,
     gmm_output_transform,
 )
@@ -65,7 +66,7 @@ def test_get_model_spec_returns_reorder_size_gmm_training_stack():
     assert spec.train_loss_factory() is gmm_train_loss
     assert spec.validation_loss_factory() is gmm_validation_loss
     assert spec.inference.batch_tensor_names == ("user_id",)
-    assert spec.inference.output_tensor_names == ("final_states",)
+    assert spec.inference.output_tensor_names == GMM_OUTPUT_TENSOR_NAMES
     assert spec.inference.output_transform_factory is gmm_output_transform
 
 

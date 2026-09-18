@@ -33,6 +33,24 @@ def _concatenate_buffer(
     return {name: torch.cat(tensors, dim=0) for name, tensors in buffer.items()}
 
 
+def _to_fixed_size_list_array(
+    tensor: torch.Tensor,
+    name: str,
+) -> pa.Array:
+    if tensor.ndim != 2:
+        raise ValueError(
+            f"{name} must have shape [rows, width], but received {tuple(tensor.shape)}"
+        )
+
+    return pa.FixedSizeListArray.from_arrays(
+        pa.array(
+            tensor.reshape(-1).numpy(),
+            type=pa.float32(),
+        ),
+        list_size=tensor.shape[1],
+    )
+
+
 def _to_arrow_table(
     tensors: TensorBatch,
     batch_tensor_names: tuple[str, ...] = (),
@@ -41,51 +59,29 @@ def _to_arrow_table(
     """
     Convert buffered inference tensors into an Arrow table.
     """
-    final_states = tensors["final_states"]
-
-    if final_states.ndim != 2:
-        raise ValueError(
-            "final_states must have shape [rows, hidden_size], "
-            f"but received {tuple(final_states.shape)}"
-        )
-
-    state_width = final_states.shape[1]
-
-    final_states_array = pa.FixedSizeListArray.from_arrays(
-        pa.array(
-            final_states.reshape(-1).numpy(),
-            type=pa.float32(),
-        ),
-        list_size=state_width,
-    )
-
     output_table: dict[str, pa.Array] = {}
 
     for name in batch_tensor_names:
         output_table[name] = pa.array(tensors[name].numpy(), type=pa.int64())
 
     for name in output_tensor_names:
-        if name == "final_states":
-            output_table[name] = final_states_array
-        elif name == "final_logits":
+        tensor = tensors[name]
+
+        if name == "final_logits":
             output_table[name] = pa.array(
-                tensors[name].numpy(),
+                tensor.numpy(),
                 type=pa.float32(),
             )
             output_table["final_probabilities"] = pa.array(
                 tensors["final_probabilities"].numpy(),
                 type=pa.float32(),
             )
-        elif name == "final_predictions":
-            output_table[name] = pa.array(
-                tensors[name].numpy(),
-                type=pa.float32(),
-            )
+        elif tensor.ndim == 2:
+            output_table[name] = _to_fixed_size_list_array(tensor, name)
         else:
-            raise KeyError(
-                "Only final_states and final_logits "
-                "are supported for output_tensor_names, but received "
-                f"{name}"
+            output_table[name] = pa.array(
+                tensor.numpy(),
+                type=pa.float32(),
             )
 
     return pa.table(output_table)

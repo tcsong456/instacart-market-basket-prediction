@@ -6,7 +6,12 @@ import pytest
 import torch
 from torch import nn
 
-from instacart_rnn.models.representation import binary_output_transform
+from instacart_rnn.models.reorder_size_gmm import ReorderSizeGMMOutput
+from instacart_rnn.models.representation import (
+    GMM_OUTPUT_TENSOR_NAMES,
+    binary_output_transform,
+    gmm_output_transform,
+)
 from instacart_rnn.training.export import write_inference_parquet
 
 DEVICE = torch.device("cpu")
@@ -211,4 +216,91 @@ def test_write_inference_parquet_writes_final_predictions(tmp_path):
     assert "final_probabilities" not in table.column_names
     assert table.column("final_predictions").to_pylist() == pytest.approx(
         [0.0, 1.0, 2.0]
+    )
+
+
+GMM_HIDDEN_SIZE = 4
+GMM_PEAKS = (7.0, 3.0)
+
+
+class TinyGmmModel(nn.Module):
+    def forward(self, batch):
+        history_length = batch["history_length"]
+        batch_size = history_length.size(0)
+        sequence_length = int(history_length.max().item())
+        peaks = torch.tensor(GMM_PEAKS, dtype=torch.float32)
+
+        means = torch.zeros(batch_size, sequence_length, 3)
+        means[:, :, 0] = peaks.unsqueeze(1)
+
+        log_variances = torch.full((batch_size, sequence_length, 3), 10.0)
+        log_variances[:, :, 0] = -10.0
+
+        mixing_logits = torch.full((batch_size, sequence_length, 3), -20.0)
+        mixing_logits[:, :, 0] = 20.0
+
+        batch_indices = torch.arange(batch_size)
+        final_indices = history_length - 1
+        hidden_states = torch.arange(
+            batch_size * sequence_length * GMM_HIDDEN_SIZE,
+            dtype=torch.float32,
+        ).reshape(batch_size, sequence_length, GMM_HIDDEN_SIZE)
+
+        return ReorderSizeGMMOutput(
+            hidden_states=hidden_states,
+            means=means,
+            log_variances=log_variances,
+            mixing_logits=mixing_logits,
+            final_means=means[batch_indices, final_indices],
+            final_log_variances=log_variances[batch_indices, final_indices],
+            final_mixing_logits=mixing_logits[batch_indices, final_indices],
+        )
+
+
+def test_write_inference_parquet_writes_gmm_named_tensors(tmp_path):
+    batch = {
+        "user_id": torch.tensor([11, 22]),
+        "history_length": torch.tensor([3, 5]),
+    }
+
+    write_inference_parquet(
+        model=TinyGmmModel(),
+        dataloader=[batch],
+        device=DEVICE,
+        output_path=str(tmp_path),
+        rows_per_write=10,
+        batch_tensor_names=("user_id",),
+        output_tensor_names=GMM_OUTPUT_TENSOR_NAMES,
+        output_transform=gmm_output_transform(max_candidate=24),
+    )
+
+    table = pq.read_table(tmp_path / "tinygmmmodel_representation.parquet")
+    states_type = table.schema.field("final_states").type
+    nlls_type = table.schema.field("candidate_nlls").type
+
+    assert table.column_names == ["user_id", *GMM_OUTPUT_TENSOR_NAMES]
+    assert table.num_rows == 2
+    assert table.column("user_id").to_pylist() == [11, 22]
+    assert pa.types.is_fixed_size_list(states_type)
+    assert states_type.list_size == GMM_HIDDEN_SIZE
+    assert pa.types.is_fixed_size_list(nlls_type)
+    assert nlls_type.list_size == 25
+    assert "final_probabilities" not in table.column_names
+
+    for name in GMM_OUTPUT_TENSOR_NAMES:
+        if name in {"candidate_nlls", "final_states"}:
+            continue
+
+        field_type = table.schema.field(name).type
+        assert pa.types.is_floating(field_type)
+        assert len(table.column(name).to_pylist()) == 2
+
+    candidate_nlls = table.column("candidate_nlls").to_pylist()
+    nll_0 = table.column("nll_0").to_pylist()
+
+    assert [row[0] for row in candidate_nlls] == pytest.approx(nll_0)
+    assert table.column("mode_size").to_pylist() == pytest.approx(list(GMM_PEAKS))
+    assert table.column("candidate_expected_size").to_pylist() == pytest.approx(
+        list(GMM_PEAKS),
+        abs=0.25,
     )

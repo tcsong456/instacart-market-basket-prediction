@@ -17,6 +17,7 @@ from instacart_rnn.models.product_model import ProductModel
 from instacart_rnn.models.reorder_size_gmm_model import ReorderSizeGmmModel
 from instacart_rnn.models.reorder_size_model import ReorderSizeRNNModel
 from instacart_rnn.models.representation import (
+    GMM_OUTPUT_TENSOR_NAMES,
     binary_output_transform,
     gmm_output_transform,
 )
@@ -158,7 +159,7 @@ MODEL_REGISTRY = {
         optimizer_factory=_adamw,
         inference=InferenceSpec(
             batch_tensor_names=("user_id",),
-            output_tensor_names=("final_states",),
+            output_tensor_names=GMM_OUTPUT_TENSOR_NAMES,
             output_transform_factory=gmm_output_transform,
         ),
     ),
