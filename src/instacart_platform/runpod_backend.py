@@ -60,6 +60,14 @@ class RunpodTrainingBackend:
             run_id=job.run_id,
         )
 
+    def terminate(self, handle: TrainingJobHandle) -> None:
+        response = requests.delete(
+            f"{RUNPOD_API_URL}/pods/{handle.job_id}",
+            headers=self._headers(),
+            timeout=self._timeout_seconds,
+        )
+        response.raise_for_status()
+
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._api_key}",
