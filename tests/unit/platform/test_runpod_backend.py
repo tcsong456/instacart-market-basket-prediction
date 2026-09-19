@@ -157,3 +157,66 @@ def test_submit_raises_for_http_error(mocker):
 
     with pytest.raises(requests.HTTPError, match="boom"):
         _backend().submit(_training_job())
+
+
+def test_terminate_deletes_pod(
+    mocker,
+):
+    response = mocker.Mock()
+
+    delete = mocker.patch(
+        "instacart_platform.runpod_backend.requests.delete",
+        return_value=response,
+    )
+
+    backend = RunpodTrainingBackend(
+        api_key="secret-api-key",
+        template_id="template-123",
+        timeout_seconds=20,
+    )
+
+    handle = TrainingJobHandle(
+        job_id="pod-123",
+        run_id="run-123",
+    )
+
+    backend.terminate(handle)
+
+    delete.assert_called_once_with(
+        f"{RUNPOD_API_URL}/pods/pod-123",
+        headers={
+            "Authorization": "Bearer secret-api-key",
+            "Content-Type": "application/json",
+        },
+        timeout=20,
+    )
+
+    response.raise_for_status.assert_called_once_with()
+
+
+def test_terminate_raises_for_http_error(
+    mocker,
+):
+    response = mocker.Mock()
+    response.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
+
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.delete",
+        return_value=response,
+    )
+
+    backend = RunpodTrainingBackend(
+        api_key="api-key",
+        template_id="template-123",
+    )
+
+    handle = TrainingJobHandle(
+        job_id="pod-123",
+        run_id="run-123",
+    )
+
+    with pytest.raises(
+        requests.HTTPError,
+        match="500 Server Error",
+    ):
+        backend.terminate(handle)
