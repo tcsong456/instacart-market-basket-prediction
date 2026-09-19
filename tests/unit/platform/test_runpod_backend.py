@@ -165,7 +165,7 @@ def test_terminate_deletes_pod(
     response = mocker.Mock()
 
     delete = mocker.patch(
-        "instacart_platform.training.runpod_backend.requests.delete",
+        "instacart_platform.runpod_backend.requests.delete",
         return_value=response,
     )
 
@@ -201,7 +201,7 @@ def test_terminate_raises_for_http_error(
     response.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
 
     mocker.patch(
-        "instacart_platform.training.runpod_backend.requests.delete",
+        "instacart_platform.runpod_backend.requests.delete",
         return_value=response,
     )
 
