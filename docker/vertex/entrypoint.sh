@@ -11,6 +11,33 @@ MSG
     exit 64
 fi
 
+GCP_CREDENTIALS_FILE=""
+
+cleanup() {
+    if [[ -n "${GCP_CREDENTIALS_FILE}" ]]; then
+        rm -f "${GCP_CREDENTIALS_FILE}"
+    fi
+}
+
+trap cleanup EXIT
+
+if [[ -n "${GCP_TRAINING_SA_JSON:-}" ]]; then
+    umask 077
+
+    GCP_CREDENTIALS_FILE="$(mktemp)"
+
+    printf '%s' "${GCP_TRAINING_SA_JSON}" > "${GCP_CREDENTIALS_FILE}"
+    chmod 600 "${GCP_CREDENTIALS_FILE}"
+
+    if ! python -m json.tool "${GCP_CREDENTIALS_FILE}" >/dev/null 2>&1; then
+        echo "GCP_TRAINING_SA_JSON contains invalid JSON." >&2
+        exit 78
+    fi
+
+    export GOOGLE_APPLICATION_CREDENTIALS="${GCP_CREDENTIALS_FILE}"
+    unset GCP_TRAINING_SA_JSON
+fi
+
 echo "Python: $(python --version 2>&1)"
 python - <<'PY'
 import torch
