@@ -28,6 +28,12 @@ trash/*
 .tmp_spark_test/
 **/trash_try.sh
 
+#json credentials
+*-key.json
+credentials.json
+sa.json
+service-account.jsons
+
 #VS code
 .vscode/*
 !.vscode/extensions.json
