@@ -7,6 +7,7 @@ locals {
     "roles/iam.serviceAccountAdmin",
     "roles/resourcemanager.projectIamAdmin",
     "roles/serviceusage.serviceUsageAdmin",
+    "roles/artifactregistry.admin",
   ])
 }
 
