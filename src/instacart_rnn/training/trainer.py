@@ -171,6 +171,7 @@ class Trainer:
         train_loss_fn: LossFn,
         val_loss_fn: LossFn,
         checkpoint_path: str,
+        last_checkpoint_path: str,
         device: torch.device,
         epochs: int,
         early_stopping: int | None = None,
@@ -191,6 +192,7 @@ class Trainer:
         self.grad_clip_norm = grad_clip_norm
         self.amp = amp
         self.checkpoint_path = checkpoint_path
+        self.last_checkpoint_path = last_checkpoint_path
 
         self.on_validation_end = on_validation_end
 
@@ -209,6 +211,13 @@ class Trainer:
             cooldown=0,
             min_lr=1e-6,
         )
+
+        self.contents = {
+            "model": self.model,
+            "optimizer": self.optimizer,
+            "scheduler": self.scheduler,
+            "scaler": self.scaler,
+        }
 
     def fit(
         self,
@@ -279,6 +288,13 @@ class Trainer:
 
             self.scheduler.step(val_loss)
 
+            save_checkpoint(
+                path=self.last_checkpoint_path,
+                epoch=epoch,
+                validation_loss=val_loss,
+                **self.contents,
+            )
+
             if val_loss < best_validation_loss:
                 best_validation_loss = val_loss
                 best_epoch = epoch
@@ -286,12 +302,9 @@ class Trainer:
 
                 save_checkpoint(
                     path=self.checkpoint_path,
-                    model=self.model,
-                    optimizer=self.optimizer,
-                    scheduler=self.scheduler,
-                    scaler=self.scaler,
                     epoch=best_epoch,
                     validation_loss=(best_validation_loss),
+                    **self.contents,
                 )
             else:
                 bad_epochs += 1

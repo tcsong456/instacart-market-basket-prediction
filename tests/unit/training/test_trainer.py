@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -68,6 +69,7 @@ def _mse_loss(output, batch):
 def _trainer(
     *,
     checkpoint_path,
+    last_checkpoint_path=None,
     epochs,
     early_stopping=None,
     val_loss_fn=None,
@@ -76,12 +78,17 @@ def _trainer(
     model = TinyModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
+    if last_checkpoint_path is None:
+        last_checkpoint_path = Path(checkpoint_path) / "last"
+        last_checkpoint_path.mkdir(parents=True, exist_ok=True)
+
     return Trainer(
         model=model,
         optimizer=optimizer,
         train_loss_fn=_mse_loss,
         val_loss_fn=val_loss_fn or _mse_loss,
         checkpoint_path=str(checkpoint_path),
+        last_checkpoint_path=str(last_checkpoint_path),
         device=DEVICE,
         epochs=epochs,
         early_stopping=early_stopping,

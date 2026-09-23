@@ -1,10 +1,8 @@
 import argparse
 
 from instacart_etl_rnn.common.setup_logging import configure_logging
-from instacart_rnn.training.runner import (
-    TrainingRunConfig,
-    run_training,
-)
+from instacart_rnn.training.exec_run import execute_run
+from instacart_rnn.training.runner import InferenceRunConfig, TrainingRunConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -14,28 +12,20 @@ def parse_args() -> argparse.Namespace:
         "--model",
         required=True,
     )
-    parser.add_argument(
-        "--train-path",
-        required=True,
-    )
-    parser.add_argument(
-        "--validation-path",
-        required=True,
-    )
-    parser.add_argument(
-        "--checkpoint-path",
-        required=True,
-    )
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--data-root", required=True)
+    parser.add_argument("--runs-root", required=True)
     parser.add_argument(
         "--epochs",
         type=int,
         default=10,
     )
     parser.add_argument(
-        "--batch-size",
+        "--train-batch-size",
         type=int,
-        default=512,
+        default=256,
     )
+    parser.add_argument("--eval-batch-size", type=int, default=512)
     parser.add_argument(
         "--read-batch-size",
         type=int,
@@ -45,6 +35,16 @@ def parse_args() -> argparse.Namespace:
         "--lstm-size",
         type=int,
         default=256,
+    )
+    parser.add_argument(
+        "--max-candidate",
+        type=int,
+        default=24,
+    )
+    parser.add_argument(
+        "--rows-per-write",
+        type=int,
+        default=100000,
     )
     parser.add_argument(
         "--learning-rate",
@@ -71,6 +71,8 @@ def parse_args() -> argparse.Namespace:
         "--grad-clip-norm",
         type=float,
     )
+    parser.add_argument("--git-commit", default="")
+    parser.add_argument("--image", default="")
     parser.add_argument("--warm-start", action="store_true")
     parser.add_argument(
         "--amp",
@@ -86,13 +88,18 @@ def main() -> None:
 
     configure_logging()
 
-    config = TrainingRunConfig(
+    base_path = f"{args.data_root.rstrip('/')}/{args.model}_training_data"
+
+    train_path = f"{base_path}_train"
+    validation_path = f"{base_path}_validation"
+    eval_path = f"{base_path}_evaluation"
+
+    train_config = TrainingRunConfig(
         model_name=args.model,
-        train_path=args.train_path,
-        validation_path=args.validation_path,
-        checkpoint_path=args.checkpoint_path,
+        train_path=train_path,
+        validation_path=validation_path,
         epochs=args.epochs,
-        batch_size=args.batch_size,
+        batch_size=args.train_batch_size,
         read_batch_size=args.read_batch_size,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
@@ -106,7 +113,29 @@ def main() -> None:
         pin_memory=args.pin_memory,
     )
 
-    run_training(config)
+    inference_config = InferenceRunConfig(
+        model_name=args.model,
+        eval_path=eval_path,
+        checkpoint_path="",
+        output_path="",
+        rows_per_write=args.rows_per_write,
+        batch_size=args.eval_batch_size,
+        read_batch_size=args.read_batch_size,
+        lstm_size=args.lstm_size,
+        max_candidate=args.max_candidate,
+        num_workers=args.num_workers,
+        amp=args.amp,
+        pin_memory=args.pin_memory,
+    )
+
+    execute_run(
+        run_id=args.run_id,
+        runs_root=args.runs_root,
+        training_config=train_config,
+        inference_config=inference_config,
+        git_commit=args.git_commit,
+        image=args.image,
+    )
 
 
 if __name__ == "__main__":

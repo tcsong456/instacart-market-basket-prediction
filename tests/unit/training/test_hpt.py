@@ -88,16 +88,18 @@ def test_objective_returns_best_validation_loss_from_training_run(
     assert config.pin_memory is False
     assert config.early_stopping == 2
     assert config.on_validation_end is not None
-    assert Path(config.checkpoint_path) == tmp_path / "trial_0000"
+    assert Path(run_training.call_args.kwargs["paths"].root) == (
+        tmp_path / "trial_0000"
+    )
 
 
 def test_objective_prunes_trial_when_optuna_requests_it(tmp_path, mocker):
-    def fake_training(config):
+    def fake_training(config, paths):
         config.on_validation_end(0, 0.8)
         return TrainingRunResult(
             best_validation_loss=0.8,
             best_epoch=0,
-            checkpoint_path=config.checkpoint_path,
+            checkpoint_path=paths.best_checkpoint,
         )
 
     mocker.patch(

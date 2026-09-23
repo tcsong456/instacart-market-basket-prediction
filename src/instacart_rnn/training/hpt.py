@@ -6,6 +6,7 @@ from pathlib import Path
 import optuna
 
 from instacart_etl_rnn.common.setup_logging import configure_logging
+from instacart_platform.runs import RunPaths
 from instacart_rnn.training.runner import TrainingRunConfig, run_training
 
 logger = logging.getLogger(__name__)
@@ -101,7 +102,6 @@ def objective(
         model_name=model_name,
         train_path=train_path,
         validation_path=validation_path,
-        checkpoint_path=str(trial_path),
         epochs=epochs,
         batch_size=batch_size,
         read_batch_size=4096,
@@ -117,6 +117,7 @@ def objective(
         early_stopping=early_stopping,
         on_validation_end=on_validation_end,
     )
+    paths = RunPaths(root=str(trial_path))
 
     logger.info(
         "Starting Optuna trial %d with parameters: %s",
@@ -124,7 +125,7 @@ def objective(
         trial.params,
     )
 
-    result = run_training(config)
+    result = run_training(config, paths=paths)
 
     validation_loss = result.best_validation_loss
 

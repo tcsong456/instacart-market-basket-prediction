@@ -7,6 +7,67 @@ data "terraform_remote_state" "bootstrap" {
   }
 }
 
+resource "google_service_account" "training_image_builder" {
+  project = var.project_id
+
+  account_id   = "training-image-builder"
+  display_name = "Training Image Builder"
+}
+
+resource "google_service_account_iam_member" "github_image_builder" {
+  service_account_id = google_service_account.training_image_builder.name
+
+  role = "roles/iam.workloadIdentityUser"
+
+  member = data.terraform_remote_state.bootstrap.outputs.main_branch_principal_set
+}
+
+resource "google_artifact_registry_repository_iam_member" "image_builder" {
+  project    = var.project_id
+  location   = var.artifact_registry_location
+  repository = var.artifact_registry_repository_id
+
+  role   = "roles/artifactregistry.writer"
+  member = "serviceAccount:${google_service_account.training_image_builder.email}"
+}
+
+resource "google_service_account" "runpod_artifact_reader" {
+  project = var.project_id
+
+  account_id   = "runpod-artifact-reader"
+  display_name = "RunPod Artifact Registry Reader"
+}
+
+resource "google_artifact_registry_repository_iam_member" "runpod_reader" {
+  project    = var.project_id
+  location   = var.artifact_registry_location
+  repository = var.artifact_registry_repository_id
+
+  role = "roles/artifactregistry.reader"
+
+  member = "serviceAccount:${google_service_account.runpod_artifact_reader.email}"
+}
+
+resource "google_service_account" "training_runtime" {
+  project      = var.project_id
+  account_id   = "training-runtime"
+  display_name = "Training Runtime Service Account"
+}
+
+resource "google_storage_bucket_iam_member" "training_runtime_read_data" {
+  bucket = var.bucket_names["gold"]
+
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.training_runtime.email}"
+}
+
+resource "google_storage_bucket_iam_member" "training_runtime_write_runs" {
+  bucket = var.bucket_names["runs"]
+
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.training_runtime.email}"
+}
+
 resource "google_service_account" "terraform_etl" {
   project      = var.project_id
   account_id   = var.etl_service_account_id

@@ -13,7 +13,7 @@ class JobStatus(str, Enum):
 class TrainingJob:
     run_id: str
     image: str
-    command: list[str]
+    command: tuple
     gpu_type: str
     gpu_count: int = 1
 
