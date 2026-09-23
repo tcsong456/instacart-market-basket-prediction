@@ -15,8 +15,7 @@ resource "google_service_account" "training_image_builder" {
 }
 
 resource "google_service_account_iam_member" "github_image_builder" {
-  service_account_id =
-    google_service_account.training_image_builder.name
+  service_account_id = google_service_account.training_image_builder.name
 
   role = "roles/iam.workloadIdentityUser"
 

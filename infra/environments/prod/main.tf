@@ -27,11 +27,9 @@ module "iam" {
   dataproc_temp_bucket_name    = module.gcs_buckets.bucket_names["dataproc-temp"]
   dataproc_staging_bucket_name = module.gcs_buckets.bucket_names["dataproc-staging"]
 
-  artifact_registry_location =
-    google_artifact_registry_repository.ml.location
+  artifact_registry_location = google_artifact_registry_repository.ml.location
 
-  artifact_registry_repository_id =
-    google_artifact_registry_repository.ml.repository_id
+  artifact_registry_repository_id = google_artifact_registry_repository.ml.repository_id
 
   project_roles = var.project_roles
 
