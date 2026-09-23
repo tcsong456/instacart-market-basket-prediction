@@ -1,0 +1,45 @@
+name: Run Training
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeline:
+        description: "Simulation timeline"
+        required: true
+        type: choice
+        options:
+          - initial
+          - t1
+          - t2
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install package
+        run: python -m pip install -e .
+
+      - name: Set image URI
+        run: |
+          echo "TRAINING_IMAGE=europe-west1-docker.pkg.dev/instacart-basket/instacart-basket-prediction/instacart-ml:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Submit training
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          python -m instacart_platform.submit_training_job \
+            --git-commit "${GITHUB_SHA}" \
+            --image "${TRAINING_IMAGE}" \
+            --template-id "${{ vars.RUNPOD_TEMPLATE_ID }}" \
+            --timeline "${{ inputs.timeline }}" \
+            --gold-root "${{ vars.GOLD_BUCKET_URI }}" \
+            --runs-root "${{ vars.RUNS_BUCKET_URI }}" \
+            --model-name product \
+            --gpu-type "NVIDIA L4"

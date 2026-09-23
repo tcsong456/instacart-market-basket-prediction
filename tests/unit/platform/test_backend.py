@@ -33,7 +33,7 @@ def test_in_memory_backend_follows_training_contract():
     job = TrainingJob(
         run_id="run-1",
         image="image:tag",
-        command=["-m", "instacart_rnn.train"],
+        command=("-m", "instacart_rnn.run"),
         gpu_type="rtx_4090",
     )
 

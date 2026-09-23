@@ -8,6 +8,7 @@ from torch import nn
 from torch.optim import Optimizer
 from tqdm import tqdm
 
+from instacart_platform.runs import RunPaths
 from instacart_rnn.models.model_registry import (
     ModelSpec,
     get_model_spec,
@@ -37,7 +38,6 @@ class TrainingRunConfig:
 
     train_path: str
     validation_path: str
-    checkpoint_path: str
 
     epochs: int
     batch_size: int
@@ -115,9 +115,7 @@ def _build_optimizer(
     )
 
 
-def run_training(
-    config: TrainingRunConfig,
-) -> TrainingRunResult:
+def run_training(config: TrainingRunConfig, paths: RunPaths) -> TrainingRunResult:
     """
     Execute one complete model training process.
 
@@ -210,7 +208,8 @@ def run_training(
         val_loss_fn=validation_loss_fn,
         device=device,
         epochs=config.epochs,
-        checkpoint_path=config.checkpoint_path,
+        checkpoint_path=paths.best_checkpoint,
+        last_checkpoint_path=paths.last_checkpoint,
         grad_clip_norm=config.grad_clip_norm,
         amp=config.amp,
         early_stopping=config.early_stopping,
@@ -239,7 +238,7 @@ def run_training(
     return TrainingRunResult(
         best_validation_loss=best_val_loss,
         best_epoch=best_epoch,
-        checkpoint_path=config.checkpoint_path,
+        checkpoint_path=paths.best_checkpoint,
     )
 
 

@@ -5,6 +5,7 @@ import pytest
 import torch
 from torch import nn
 
+from instacart_platform.runs import RunPaths
 from instacart_rnn.models.model_registry import InferenceSpec, ModelSpec
 from instacart_rnn.training.runner import (
     InferenceRunConfig,
@@ -54,7 +55,6 @@ def _training_config(**overrides):
         "model_name": "tiny",
         "train_path": "train.parquet",
         "validation_path": "val.parquet",
-        "checkpoint_path": "ckpt",
         "epochs": 2,
         "batch_size": 8,
         "read_batch_size": 16,
@@ -71,6 +71,12 @@ def _training_config(**overrides):
     }
     values.update(overrides)
     return TrainingRunConfig(**values)
+
+
+def _run_paths(**overrides):
+    values = {"root": "runs/tiny/run-1"}
+    values.update(overrides)
+    return RunPaths(**values)
 
 
 def _inference_config(**overrides):
@@ -126,7 +132,7 @@ def test_set_random_seed_makes_python_numpy_and_torch_draws_reproducible():
 
 def test_run_training_raises_for_unsupported_model():
     with pytest.raises(ValueError, match="Unsupported model 'unknown'"):
-        run_training(_training_config(model_name="unknown"))
+        run_training(_training_config(model_name="unknown"), paths=_run_paths())
 
 
 def test_run_training_fits_registered_model_with_train_and_validation_loaders(
@@ -162,8 +168,9 @@ def test_run_training_fits_registered_model_with_train_and_validation_loaders(
     )
     trainer_cls = mocker.patch("instacart_rnn.training.runner.Trainer", autospec=True)
     trainer_cls.return_value.fit.return_value = (0.25, 1)
+    paths = _run_paths()
 
-    result = run_training(_training_config())
+    result = run_training(_training_config(), paths=paths)
 
     get_spec.assert_called_once_with("tiny")
     assert dataloader_calls == [
@@ -194,7 +201,8 @@ def test_run_training_fits_registered_model_with_train_and_validation_loaders(
     assert kwargs["val_loss_fn"] is validation_loss_fn
     assert kwargs["device"] == torch.device("cpu")
     assert kwargs["epochs"] == 2
-    assert kwargs["checkpoint_path"] == "ckpt"
+    assert kwargs["checkpoint_path"] == paths.best_checkpoint
+    assert kwargs["last_checkpoint_path"] == paths.last_checkpoint
     assert kwargs["grad_clip_norm"] == pytest.approx(1.5)
     assert kwargs["amp"] is True
     assert kwargs["early_stopping"] == 3
@@ -211,7 +219,7 @@ def test_run_training_fits_registered_model_with_train_and_validation_loaders(
     assert result == TrainingRunResult(
         best_validation_loss=0.25,
         best_epoch=1,
-        checkpoint_path="ckpt",
+        checkpoint_path=paths.best_checkpoint,
     )
 
 
@@ -234,7 +242,7 @@ def test_run_training_forwards_validation_callback_to_trainer(mocker):
     trainer_cls = mocker.patch("instacart_rnn.training.runner.Trainer", autospec=True)
     trainer_cls.return_value.fit.return_value = (0.1, 0)
 
-    run_training(_training_config(on_validation_end=callback))
+    run_training(_training_config(on_validation_end=callback), paths=_run_paths())
 
     assert trainer_cls.call_args.kwargs["on_validation_end"] is callback
 

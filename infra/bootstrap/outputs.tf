@@ -21,3 +21,7 @@ output "workload_identity_provider_name" {
   description = "Full resource name the Workload Identity provider."
   value       = google_iam_workload_identity_pool_provider.github.name
 }
+
+output "main_branch_principal_set" {
+  value = local.main_branch_principal_set
+}

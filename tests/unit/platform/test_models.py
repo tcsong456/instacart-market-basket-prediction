@@ -14,7 +14,7 @@ def _training_job(**overrides) -> TrainingJob:
     payload = {
         "run_id": "run-1",
         "image": "image:tag",
-        "command": ["-m", "instacart_rnn.train"],
+        "command": ("-m", "instacart_rnn.run"),
         "gpu_type": "rtx_4090",
     }
     payload.update(overrides)
@@ -26,7 +26,7 @@ def test_training_job_uses_default_gpu_count():
 
     assert job.run_id == "run-1"
     assert job.image == "image:tag"
-    assert job.command == ["-m", "instacart_rnn.train"]
+    assert job.command == ("-m", "instacart_rnn.run")
     assert job.gpu_type == "rtx_4090"
     assert job.gpu_count == 1
 

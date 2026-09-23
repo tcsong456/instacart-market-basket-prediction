@@ -38,3 +38,17 @@ variable "dataproc_temp_bucket_name" {
   description = "Name of the Dataproc temporary bucket"
   type        = string
 }
+
+variable "artifact_registry_location" {
+  type = string
+}
+
+variable "artifact_registry_repository_id" {
+  type = string
+}
+
+variable "bucket_names" {
+  description = "Names of GCS buckets"
+
+  type = map(string)
+}

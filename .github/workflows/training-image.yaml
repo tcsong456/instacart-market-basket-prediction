@@ -1,0 +1,50 @@
+name: Build Training Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/instacart_rnn/**"
+      - "src/instacart_platform/**"
+      - "docker/vertex/**"
+      - "pyproject.toml"
+      - ".github/workflows/training-image.yaml"
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.TRAINING_IMAGE_BUILDER_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
+      - name: Set image URI
+        run: |
+          echo "TRAINING_IMAGE=europe-west1-docker.pkg.dev/instacart-basket/instacart-basket-prediction/instacart-ml:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Build image
+        run: |
+          docker build \
+            -f docker/vertex/Dockerfile \
+            -t "${TRAINING_IMAGE}" \
+            .
+
+      - name: Push image
+        run: |
+          docker push "${TRAINING_IMAGE}"
