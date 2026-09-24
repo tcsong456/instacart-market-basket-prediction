@@ -11,7 +11,7 @@ on:
           - initial
           - t1
           - t2
-    inputs:
+
       mode:
         description: "Use sample or cureated data"
         required: true
