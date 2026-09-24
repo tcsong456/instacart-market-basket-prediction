@@ -7,9 +7,11 @@ on:
     paths:
       - "src/instacart_rnn/**"
       - "src/instacart_platform/**"
-      - "docker/vertex/**"
+      - "docker/training/**"
       - "pyproject.toml"
       - ".github/workflows/training-image.yaml"
+
+  workflow_dispatch:
 
 jobs:
   build-image:
@@ -34,17 +36,15 @@ jobs:
         run: |
           gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
 
-      - name: Set image URI
+      - name: Build and push training image
         run: |
-          echo "TRAINING_IMAGE=europe-west1-docker.pkg.dev/instacart-basket/instacart-basket-prediction/instacart-ml:${GITHUB_SHA}" >> "$GITHUB_ENV"
+          IMAGE_BASE="europe-west1-docker.pkg.dev/instacart-basket/instacart-basket-prediction/instacart-ml"
 
-      - name: Build image
-        run: |
           docker build \
-            -f docker/vertex/Dockerfile \
-            -t "${TRAINING_IMAGE}" \
+            -f docker/training/Dockerfile \
+            -t "${IMAGE_BASE}:${GITHUB_SHA}" \
+            -t "${IMAGE_BASE}:latest" \
             .
 
-      - name: Push image
-        run: |
-          docker push "${TRAINING_IMAGE}"
+          docker push "${IMAGE_BASE}:${GITHUB_SHA}"
+          docker push "${IMAGE_BASE}:latest"

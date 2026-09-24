@@ -12,6 +12,14 @@ on:
           - t1
           - t2
 
+      mode:
+        description: "Use sample or cureated data"
+        required: true
+        type: choice
+        options:
+          - sample
+          - curated
+
 jobs:
   train:
     runs-on: ubuntu-latest
@@ -39,6 +47,7 @@ jobs:
             --image "${TRAINING_IMAGE}" \
             --template-id "${{ vars.RUNPOD_TEMPLATE_ID }}" \
             --timeline "${{ inputs.timeline }}" \
+            --mode "${{ inputs.mode }}" \
             --gold-root "${{ vars.GOLD_BUCKET_URI }}" \
             --runs-root "${{ vars.RUNS_BUCKET_URI }}" \
             --model-name product \
