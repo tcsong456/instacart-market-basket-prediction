@@ -37,11 +37,11 @@ COPY --chown=root:root src/ /app/src/
 RUN python -m pip install --upgrade "pip<27" \
     && python -m pip install .
 
-COPY --chown=root:root docker/vertex/entrypoint.sh \
-    /usr/local/bin/vertex-entrypoint
+COPY --chown=root:root docker/training/entrypoint.sh \
+    /usr/local/bin/training-entrypoint
 
-RUN chmod 0555 /usr/local/bin/vertex-entrypoint
+RUN chmod 0555 /usr/local/bin/training-entrypoint
 
 USER app
 
-ENTRYPOINT ["/usr/local/bin/vertex-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/training-entrypoint"]

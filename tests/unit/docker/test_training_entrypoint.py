@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-ENTRYPOINT = Path(__file__).resolve().parents[3] / "docker" / "vertex" / "entrypoint.sh"
+ENTRYPOINT = (
+    Path(__file__).resolve().parents[3] / "docker" / "training" / "entrypoint.sh"
+)
 VALID_SA_JSON = json.dumps(
     {
         "type": "service_account",
@@ -16,7 +18,7 @@ VALID_SA_JSON = json.dumps(
 
 pytestmark = pytest.mark.skipif(
     os.name == "nt" or shutil.which("bash") is None,
-    reason="vertex-entrypoint is a POSIX bash container script",
+    reason="training-entrypoint is a POSIX bash container script",
 )
 
 
@@ -41,14 +43,14 @@ def _run_entrypoint(
     )
 
 
-def test_vertex_entrypoint_requires_a_python_command():
+def test_training_entrypoint_requires_a_python_command():
     result = _run_entrypoint()
 
     assert result.returncode == 64
     assert "No job entrypoint was provided." in result.stderr
 
 
-def test_vertex_entrypoint_rejects_invalid_service_account_json():
+def test_training_entrypoint_rejects_invalid_service_account_json():
     result = _run_entrypoint(
         "-c",
         "raise SystemExit('should not run')",
@@ -61,7 +63,7 @@ def test_vertex_entrypoint_rejects_invalid_service_account_json():
     assert "should not run" not in result.stdout
 
 
-def test_vertex_entrypoint_exposes_credentials_file_to_python():
+def test_training_entrypoint_exposes_credentials_file_to_python():
     result = _run_entrypoint(
         "-c",
         (
@@ -94,7 +96,7 @@ def test_vertex_entrypoint_exposes_credentials_file_to_python():
     assert lines["CREDENTIALS_PATH"]
 
 
-def test_vertex_entrypoint_leaves_adc_unset_without_service_account_json():
+def test_training_entrypoint_leaves_adc_unset_without_service_account_json():
     result = _run_entrypoint(
         "-c",
         (
