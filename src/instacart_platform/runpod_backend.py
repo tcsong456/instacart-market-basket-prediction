@@ -80,6 +80,12 @@ class RunpodTrainingBackend:
             json=payload,
             timeout=self._timeout_seconds,
         )
+        if not response.ok:
+            logger.error(
+                "RunPod pod creation failed: status=%s body=%s",
+                response.status_code,
+                response.text,
+            )
         response.raise_for_status()
 
         response_data = response.json()
