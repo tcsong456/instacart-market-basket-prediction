@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 RUNPOD_API_URL = "https://rest.runpod.io/v1"
+# v2 GET includes lifecycle status and runtime; v1 GET does not.
+RUNPOD_V2_API_URL = "https://api.runpod.io/v2"
+_POD_DEAD_STATUSES = frozenset({"EXITED", "ERROR", "TERMINATED"})
 
 
 class RunpodTrainingBackend:
@@ -132,16 +135,20 @@ class RunpodTrainingBackend:
 
         pod = self._get_pod(handle.job_id)
         runtime = pod.get("runtime")
+        pod_status = pod.get("status")
         logger.info("RunPod pod response: %s", pod)
 
         if runtime is not None:
             self._runtime_seen.add(handle.job_id)
 
+        if pod_status in _POD_DEAD_STATUSES:
+            return JobStatus.FAILED
+
         # Application successfully reached running state.
         if run_status == "running":
             self._startup_seen_at.pop(handle.job_id, None)
 
-            if runtime is None:
+            if handle.job_id in self._runtime_seen and runtime is None:
                 return JobStatus.FAILED
 
             return JobStatus.RUNNING
@@ -253,10 +260,13 @@ class RunpodTrainingBackend:
         job_id: str,
     ) -> dict[str, Any]:
         response = requests.get(
-            f"{RUNPOD_API_URL}/pods/{job_id}",
+            f"{RUNPOD_V2_API_URL}/pods/{job_id}",
             headers=self._headers(),
             timeout=self._timeout_seconds,
         )
+        if response.status_code == 404:
+            return {"status": "TERMINATED", "runtime": None}
+
         response.raise_for_status()
 
         data = response.json()

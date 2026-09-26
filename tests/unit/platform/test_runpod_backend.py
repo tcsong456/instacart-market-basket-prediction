@@ -12,6 +12,7 @@ from instacart_platform.models import (
 )
 from instacart_platform.runpod_backend import (
     RUNPOD_API_URL,
+    RUNPOD_V2_API_URL,
     RunpodTrainingBackend,
 )
 
@@ -367,28 +368,104 @@ def test_get_status_fails_when_run_json_is_failed(gcs, mocker):
     get.assert_not_called()
 
 
+def test_get_status_gets_pod_from_v2_endpoint(gcs, mocker):
+    _configure_run_folder(gcs, status="running")
+    get = _mock_get_pod(
+        mocker,
+        {"status": "RUNNING", "runtime": {"uptime": 12}},
+    )
+    backend = _backend(timeout_seconds=15.0)
+
+    status = backend.get_status(_handle())
+
+    assert status is JobStatus.RUNNING
+    get.assert_called_once_with(
+        f"{RUNPOD_V2_API_URL}/pods/pod-123",
+        headers={
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json",
+        },
+        timeout=15.0,
+    )
+
+
 def test_get_status_is_running_when_run_json_is_running_and_runtime_is_present(
     gcs,
     mocker,
 ):
     _configure_run_folder(gcs, status="running")
-    _mock_get_pod(mocker, {"runtime": {"uptimeInSeconds": 12}})
+    _mock_get_pod(mocker, {"status": "RUNNING", "runtime": {"uptime": 12}})
 
     status = _backend().get_status(_handle())
 
     assert status is JobStatus.RUNNING
 
 
-def test_get_status_fails_when_run_json_is_running_and_runtime_is_missing(
+def test_get_status_keeps_running_when_runtime_is_missing_on_first_sighting(
     gcs,
     mocker,
 ):
     _configure_run_folder(gcs, status="running")
-    _mock_get_pod(mocker, {"runtime": None})
+    _mock_get_pod(mocker, {"status": "RUNNING", "runtime": None})
+
+    status = _backend().get_status(_handle())
+
+    assert status is JobStatus.RUNNING
+
+
+def test_get_status_fails_when_runtime_disappears_after_run_json_is_running(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs, status="running")
+    backend = _backend()
+    handle = _handle()
+    _mock_get_pod(mocker, {"status": "RUNNING", "runtime": {"uptime": 12}})
+
+    assert backend.get_status(handle) is JobStatus.RUNNING
+
+    _mock_get_pod(mocker, {"status": "RUNNING", "runtime": None})
+
+    assert backend.get_status(handle) is JobStatus.FAILED
+
+
+@pytest.mark.parametrize("pod_status", ["EXITED", "ERROR", "TERMINATED"])
+def test_get_status_fails_when_pod_lifecycle_is_dead(gcs, mocker, pod_status):
+    _configure_run_folder(gcs)
+    _mock_get_pod(mocker, {"status": pod_status, "runtime": None})
 
     status = _backend().get_status(_handle())
 
     assert status is JobStatus.FAILED
+
+
+@pytest.mark.parametrize("pod_status", ["EXITED", "ERROR", "TERMINATED"])
+def test_get_status_fails_when_run_json_is_running_and_pod_lifecycle_is_dead(
+    gcs,
+    mocker,
+    pod_status,
+):
+    _configure_run_folder(gcs, status="running")
+    _mock_get_pod(mocker, {"status": pod_status, "runtime": None})
+
+    status = _backend().get_status(_handle())
+
+    assert status is JobStatus.FAILED
+
+
+def test_get_status_fails_when_pod_is_not_found(gcs, mocker):
+    _configure_run_folder(gcs)
+    response = mocker.Mock()
+    response.status_code = 404
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.get",
+        return_value=response,
+    )
+
+    status = _backend().get_status(_handle())
+
+    assert status is JobStatus.FAILED
+    response.raise_for_status.assert_not_called()
 
 
 def test_get_status_is_pending_when_container_is_up_before_run_json(
@@ -396,7 +473,7 @@ def test_get_status_is_pending_when_container_is_up_before_run_json(
     mocker,
 ):
     _configure_run_folder(gcs)
-    _mock_get_pod(mocker, {"runtime": {"uptimeInSeconds": 3}})
+    _mock_get_pod(mocker, {"status": "RUNNING", "runtime": {"uptime": 3}})
 
     status = _backend().get_status(_handle())
 
@@ -410,21 +487,23 @@ def test_get_status_fails_when_runtime_disappears_before_run_json(
     _configure_run_folder(gcs)
     backend = _backend()
     handle = _handle()
-    _mock_get_pod(mocker, {"runtime": {"uptimeInSeconds": 3}})
+    _mock_get_pod(mocker, {"status": "RUNNING", "runtime": {"uptime": 3}})
 
     assert backend.get_status(handle) is JobStatus.PENDING
 
-    _mock_get_pod(mocker, {"runtime": None})
+    _mock_get_pod(mocker, {"status": "RUNNING", "runtime": None})
 
     assert backend.get_status(handle) is JobStatus.FAILED
 
 
+@pytest.mark.parametrize("pod_status", ["PROVISIONING", "STARTING"])
 def test_get_status_is_pending_during_startup_grace_without_runtime(
     gcs,
     mocker,
+    pod_status,
 ):
     _configure_run_folder(gcs)
-    _mock_get_pod(mocker, {})
+    _mock_get_pod(mocker, {"status": pod_status, "runtime": None})
     mocker.patch(
         "instacart_platform.runpod_backend.time.monotonic",
         return_value=50.0,
@@ -440,7 +519,7 @@ def test_get_status_fails_when_startup_grace_expires_without_runtime(
     mocker,
 ):
     _configure_run_folder(gcs)
-    _mock_get_pod(mocker, {"runtime": None})
+    _mock_get_pod(mocker, {"status": "PROVISIONING", "runtime": None})
     backend = _backend(startup_grace_seconds=10)
     handle = _handle()
     mocker.patch(
