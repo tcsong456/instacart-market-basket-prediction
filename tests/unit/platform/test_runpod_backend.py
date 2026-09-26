@@ -86,12 +86,35 @@ def _mock_get_pod(mocker, payload):
 
 def _mock_create_pod_response(mocker, payload):
     response = mocker.Mock()
+    response.ok = True
     response.json.return_value = payload
     response.raise_for_status.return_value = None
     return mocker.patch(
         "instacart_platform.runpod_backend.requests.post",
         return_value=response,
     )
+
+
+def _capacity_response(mocker, error):
+    response = mocker.Mock()
+    response.ok = False
+    response.status_code = 500
+    response.text = error
+    response.json.return_value = {"error": error, "status": 500}
+    return response
+
+
+def _http_error_response(mocker, *, status_code, payload=None, text="failure"):
+    response = mocker.Mock()
+    response.ok = False
+    response.status_code = status_code
+    response.text = text
+    if payload is None:
+        response.json.side_effect = requests.JSONDecodeError("bad json", text, 0)
+    else:
+        response.json.return_value = payload
+    response.raise_for_status.side_effect = requests.HTTPError("boom")
+    return response
 
 
 def test_init_prefers_explicit_api_key_over_environment(monkeypatch, mocker):
@@ -220,15 +243,135 @@ def test_submit_raises_when_pod_id_is_invalid(mocker, pod_id):
 
 
 def test_submit_raises_for_http_error(mocker):
-    response = mocker.Mock()
-    response.raise_for_status.side_effect = requests.HTTPError("boom")
-    mocker.patch(
+    response = _http_error_response(
+        mocker,
+        status_code=500,
+        payload={"error": "internal failure"},
+        text="internal failure",
+    )
+    post = mocker.patch(
         "instacart_platform.runpod_backend.requests.post",
         return_value=response,
     )
 
     with pytest.raises(requests.HTTPError, match="boom"):
         _backend().submit(_training_job())
+
+    assert post.call_count == 1
+
+
+def test_submit_rejects_unsupported_gpu_type(mocker):
+    post = mocker.patch("instacart_platform.runpod_backend.requests.post")
+
+    with pytest.raises(ValueError, match="Unsupported GPU type: 'Tesla T4'"):
+        _backend().submit(_training_job(gpu_type="Tesla T4"))
+
+    post.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "create pod: There are no instances currently available",
+        "There are no longer any instances available",
+        "THERE ARE NO INSTANCES CURRENTLY AVAILABLE",
+    ],
+)
+def test_submit_falls_back_to_the_next_gpu_when_preferred_has_no_capacity(
+    mocker,
+    error,
+):
+    created = mocker.Mock()
+    created.ok = True
+    created.json.return_value = {"id": "pod-999"}
+    post = mocker.patch(
+        "instacart_platform.runpod_backend.requests.post",
+        side_effect=[_capacity_response(mocker, error), created],
+    )
+
+    handle = _backend().submit(
+        _training_job(gpu_type="NVIDIA A40", gpu_count=2),
+    )
+
+    assert handle.job_id == "pod-999"
+    assert [call.kwargs["json"]["gpuTypeIds"] for call in post.call_args_list] == [
+        ["NVIDIA A40"],
+        ["NVIDIA L4"],
+    ]
+    assert post.call_args_list[1].kwargs["json"]["gpuCount"] == 2
+
+
+def test_submit_raises_when_no_gpu_type_has_capacity(mocker):
+    error = "create pod: There are no instances currently available"
+    responses = [_capacity_response(mocker, error) for _ in range(5)]
+    post = mocker.patch(
+        "instacart_platform.runpod_backend.requests.post",
+        side_effect=responses,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="No configured RunPod GPU type currently has capacity",
+    ) as exc_info:
+        _backend().submit(_training_job())
+
+    assert post.call_count == 5
+    assert "NVIDIA L4" in str(exc_info.value)
+    assert "NVIDIA L40S" in str(exc_info.value)
+    for response in responses:
+        response.raise_for_status.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("status_code", "payload"),
+    [
+        (500, {"error": "template not found"}),
+        (500, {"error": {"message": "There are no instances currently available"}}),
+        (400, {"error": "There are no instances currently available"}),
+        (500, None),
+    ],
+)
+def test_submit_does_not_try_another_gpu_after_a_non_capacity_error(
+    mocker,
+    status_code,
+    payload,
+):
+    post = mocker.patch(
+        "instacart_platform.runpod_backend.requests.post",
+        return_value=_http_error_response(
+            mocker,
+            status_code=status_code,
+            payload=payload,
+        ),
+    )
+
+    with pytest.raises(requests.HTTPError, match="boom"):
+        _backend().submit(_training_job())
+
+    assert post.call_count == 1
+
+
+def test_submit_does_not_try_another_gpu_when_create_succeeds_without_a_pod_id(
+    mocker,
+):
+    accepted = mocker.Mock()
+    accepted.ok = True
+    accepted.json.return_value = {}
+    post = mocker.patch(
+        "instacart_platform.runpod_backend.requests.post",
+        side_effect=[
+            _capacity_response(
+                mocker,
+                "create pod: There are no instances currently available",
+            ),
+            accepted,
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="did not contain a valid Pod ID"):
+        _backend().submit(_training_job())
+
+    assert post.call_count == 2
 
 
 def test_terminate_deletes_pod(

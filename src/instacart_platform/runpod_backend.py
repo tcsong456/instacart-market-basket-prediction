@@ -75,36 +75,68 @@ class RunpodTrainingBackend:
         self,
         job: TrainingJob,
     ) -> TrainingJobHandle:
-        payload = self._build_create_pod_payload(job)
+        gpu_types = self._ordered_gpu_types(job.gpu_type)
 
-        response = requests.post(
-            f"{RUNPOD_API_URL}/pods",
-            headers=self._headers(),
-            json=payload,
-            timeout=self._timeout_seconds,
-        )
-        if not response.ok:
+        for gpu_type in gpu_types:
+            payload = self._build_create_pod_payload(
+                job,
+                gpu_type=gpu_type,
+            )
+
+            logger.info(
+                "Attempting RunPod pod creation with GPU %s",
+                gpu_type,
+            )
+
+            response = requests.post(
+                f"{RUNPOD_API_URL}/pods",
+                headers=self._headers(),
+                json=payload,
+                timeout=self._timeout_seconds,
+            )
+
+            if response.ok:
+                response_data = response.json()
+                pod_id = response_data.get("id")
+
+                if not isinstance(pod_id, str) or not pod_id:
+                    raise RuntimeError(
+                        "RunPod create Pod response did not contain a valid Pod ID"
+                    )
+
+                logger.info(
+                    "RunPod created pod %s with GPU %s",
+                    pod_id,
+                    gpu_type,
+                )
+
+                return TrainingJobHandle(
+                    job_id=pod_id,
+                    run_id=job.run_id,
+                    runs_root=job.runs_root,
+                    model_name=job.model_name,
+                )
+
+            if self._is_capacity_error(response):
+                logger.warning(
+                    "RunPod has no capacity for GPU %s: %s",
+                    gpu_type,
+                    response.text,
+                )
+                continue
+
             logger.error(
-                "RunPod pod creation failed: status=%s body=%s",
+                "RunPod pod creation failed for GPU %s: status=%s body=%s",
+                gpu_type,
                 response.status_code,
                 response.text,
             )
-        response.raise_for_status()
 
-        response_data = response.json()
+            response.raise_for_status()
 
-        pod_id = response_data.get("id")
-
-        if not isinstance(pod_id, str) or not pod_id:
-            raise RuntimeError(
-                "Runpod create Pod response did not contain a valid Pod ID"
-            )
-
-        return TrainingJobHandle(
-            job_id=pod_id,
-            run_id=job.run_id,
-            runs_root=job.runs_root,
-            model_name=job.model_name,
+        raise RuntimeError(
+            "No configured RunPod GPU type currently has capacity. "
+            f"Attempted GPU types: {gpu_types}"
         )
 
     def get_status(
@@ -319,14 +351,66 @@ class RunpodTrainingBackend:
             "Content-Type": "application/json",
         }
 
+    @staticmethod
+    def _is_capacity_error(response: requests.Response) -> bool:
+        """Return whether a create-pod response means this GPU type is out of stock.
+
+        Runpod REST v1 reports that as HTTP 500 with a string ``error`` field, for
+        example ``create pod: There are no instances currently available``. Any
+        other 500 stays a hard failure.
+        """
+
+        _NO_CAPACITY_MARKERS = (
+            "there are no instances currently available",
+            "there are no longer any instances available",
+        )
+
+        if response.status_code != 500:
+            return False
+
+        try:
+            payload = response.json()
+        except requests.JSONDecodeError:
+            return False
+
+        if not isinstance(payload, dict):
+            return False
+
+        error = payload.get("error")
+        if not isinstance(error, str):
+            return False
+
+        message = error.casefold()
+        return any(marker in message for marker in _NO_CAPACITY_MARKERS)
+
+    @staticmethod
+    def _ordered_gpu_types(preferred: str) -> tuple[str, ...]:
+        SUPPORTED_GPU_TYPES = (
+            "NVIDIA L4",
+            "NVIDIA RTX A5000",
+            "NVIDIA GeForce RTX 4090",
+            "NVIDIA A40",
+            "NVIDIA L40S",
+        )
+
+        if preferred not in SUPPORTED_GPU_TYPES:
+            raise ValueError(
+                f"Unsupported GPU type: {preferred!r}. "
+                f"Supported GPU types: {SUPPORTED_GPU_TYPES}"
+            )
+
+        return (
+            preferred,
+            *(gpu for gpu in SUPPORTED_GPU_TYPES if gpu != preferred),
+        )
+
     def _build_create_pod_payload(
-        self,
-        job: TrainingJob,
+        self, job: TrainingJob, gpu_type: str
     ) -> dict[str, Any]:
         return {
             "name": f"instacart-{job.run_id}",
             "imageName": job.image,
-            "gpuTypeIds": [job.gpu_type],
+            "gpuTypeIds": [gpu_type],
             "gpuCount": job.gpu_count,
             "templateId": self._template_id,
             "dockerStartCmd": job.command,
