@@ -68,6 +68,27 @@ resource "google_storage_bucket_iam_member" "training_runtime_write_runs" {
   member = "serviceAccount:${google_service_account.training_runtime.email}"
 }
 
+resource "google_service_account" "training_runner" {
+  project      = var.project_id
+  account_id   = "training-runner"
+  display_name = "GitHub Training Runner"
+}
+
+resource "google_storage_bucket_iam_member" "training_runner_runs_reader" {
+  bucket = var.bucket_names["runs"]
+  role   = "roles/storage.objectViewer"
+
+  member = "serviceAccount:${google_service_account.training_runner.email}"
+}
+
+resource "google_service_account_iam_member" "training_runner_build" {
+  service_account_id = google_service_account.training_runner.name
+
+  role = "roles/iam.workloadIdentityUser"
+
+  member = data.terraform_remote_state.bootstrap.outputs.repository_principal_set
+}
+
 resource "google_service_account" "terraform_etl" {
   project      = var.project_id
   account_id   = var.etl_service_account_id

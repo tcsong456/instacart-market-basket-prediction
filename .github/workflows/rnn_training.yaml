@@ -1,4 +1,4 @@
-name: Run Training
+name: Run RNN Training
 
 on:
   workflow_dispatch:
@@ -26,6 +26,7 @@ jobs:
 
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - name: Checkout
@@ -43,13 +44,20 @@ jobs:
 
       - name: Set image URI
         run: |
-          echo "TRAINING_IMAGE=europe-west1-docker.pkg.dev/instacart-basket/instacart-basket-prediction/instacart-ml:latest"
+          echo "TRAINING_IMAGE=europe-west1-docker.pkg.dev/instacart-basket/instacart-basket-prediction/instacart-ml:latest" >> "$GITHUB_ENV"
+      
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.TRAINING_RUNNER_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
 
       - name: Submit training
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
         run: |
-          python -m instacart_platform.submit_training_job \
+          python -m instacart_platform.rnn_submit_training_job \
             --git-commit "${GITHUB_SHA}" \
             --image "${TRAINING_IMAGE}" \
             --template-id "${{ vars.RUNPOD_TEMPLATE_ID }}" \

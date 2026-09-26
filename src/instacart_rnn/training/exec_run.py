@@ -24,8 +24,8 @@ def execute_run(
     runs_root: str,
     training_config: TrainingRunConfig,
     inference_config: InferenceRunConfig,
-    git_commit: str | None = None,
-    image: str | None = None,
+    git_commit: str,
+    image: str,
 ) -> str:
     paths = build_run_paths(
         runs_root=runs_root,

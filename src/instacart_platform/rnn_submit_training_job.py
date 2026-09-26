@@ -1,9 +1,13 @@
 import argparse
+import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from instacart_platform.models import TrainingJob
+from instacart_etl_rnn.common.setup_logging import configure_logging
+from instacart_platform.models import JobStatus, TrainingJob
 from instacart_platform.runpod_backend import RunpodTrainingBackend
+
+logger = logging.getLogger(__name__)
 
 
 def generate_run_id() -> str:
@@ -29,6 +33,8 @@ def parse_args():
 
 
 def main() -> None:
+    configure_logging()
+
     run_id = generate_run_id()
     args = parse_args()
 
@@ -37,6 +43,8 @@ def main() -> None:
         run_id=run_id,
         image=args.image,
         gpu_type=args.gpu_type,
+        runs_root=args.runs_root,
+        model_name=args.model_name,
         gpu_count=1,
         command=(
             "-m",
@@ -68,6 +76,38 @@ def main() -> None:
     print(f"RunPod Pod ID: {handle.job_id}")
     print(f"Git commit: {args.git_commit}")
     print(f"Image: {args.image}")
+
+    training_error = None
+
+    try:
+        result = backend.wait(handle)
+
+        if result.status != JobStatus.SUCCEEDED:
+            training_error = RuntimeError(
+                f"Training run {result.run_id} failed with status {result.status.value}"
+            )
+        else:
+            print(f"Training completed successfully: {result.run_id}")
+    except Exception as exc:
+        training_error = exc
+    finally:
+        print(f"Terminating RunPod Pod {handle.job_id}...")
+
+        try:
+            backend.terminate(handle)
+        except Exception:
+            logger.exception(
+                "Failed to terminate RunPod job %s",
+                handle.job_id,
+            )
+
+            if training_error is None:
+                raise
+
+    if training_error is not None:
+        raise training_error
+
+    print(f"RunPod Pod {handle.job_id} terminated.")
 
 
 if __name__ == "__main__":
