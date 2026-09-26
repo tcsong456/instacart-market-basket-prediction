@@ -15,6 +15,8 @@ class TrainingJob:
     image: str
     command: tuple
     gpu_type: str
+    runs_root: str
+    model_name: str
     gpu_count: int = 1
 
 
@@ -22,6 +24,8 @@ class TrainingJob:
 class TrainingJobHandle:
     job_id: str
     run_id: str
+    runs_root: str
+    model_name: str
 
 
 @dataclass(frozen=True)

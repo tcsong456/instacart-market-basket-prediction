@@ -1,7 +1,15 @@
+import json
+from io import StringIO
+
 import pytest
 import requests
 
-from instacart_platform.models import TrainingJob, TrainingJobHandle
+from instacart_platform.models import (
+    JobStatus,
+    TrainingJob,
+    TrainingJobHandle,
+    TrainingResult,
+)
 from instacart_platform.runpod_backend import (
     RUNPOD_API_URL,
     RunpodTrainingBackend,
@@ -17,6 +25,8 @@ def _training_job(**overrides) -> TrainingJob:
         "image": "ghcr.io/example/trainer:latest",
         "command": ["-m", "instacart_rnn.train", "--model", "product"],
         "gpu_type": "NVIDIA L4",
+        "runs_root": "gs://runs",
+        "model_name": "product",
         "gpu_count": 1,
     }
     payload.update(overrides)
@@ -30,6 +40,47 @@ def _backend(**overrides) -> RunpodTrainingBackend:
     }
     payload.update(overrides)
     return RunpodTrainingBackend(**payload)
+
+
+def _handle(**overrides) -> TrainingJobHandle:
+    payload = {
+        "job_id": "pod-123",
+        "run_id": "run-42",
+        "runs_root": "gs://runs",
+        "model_name": "product",
+    }
+    payload.update(overrides)
+    return TrainingJobHandle(**payload)
+
+
+@pytest.fixture(autouse=True)
+def gcs(mocker):
+    filesystem = mocker.Mock()
+    mocker.patch(
+        "instacart_platform.runpod_backend.gcsfs.GCSFileSystem",
+        return_value=filesystem,
+    )
+    return filesystem
+
+
+def _configure_run_folder(gcs, *, status=None, success=False):
+    if status is None:
+        gcs.open.side_effect = FileNotFoundError
+    else:
+        payload = json.dumps({"status": status})
+        gcs.open.side_effect = lambda *args, **kwargs: StringIO(payload)
+
+    gcs.exists.return_value = success
+
+
+def _mock_get_pod(mocker, payload):
+    response = mocker.Mock()
+    response.json.return_value = payload
+    response.raise_for_status.return_value = None
+    return mocker.patch(
+        "instacart_platform.runpod_backend.requests.get",
+        return_value=response,
+    )
 
 
 def _mock_create_pod_response(mocker, payload):
@@ -84,6 +135,22 @@ def test_init_rejects_non_positive_timeout():
         _backend(timeout_seconds=0)
 
 
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ("poll_interval_seconds", "poll_interval_seconds must be greater than 0"),
+        ("max_wait_seconds", "max_wait_seconds must be greater than 0"),
+        (
+            "completion_grace_seconds",
+            "completion_grace_seconds must be greater than 0",
+        ),
+    ],
+)
+def test_init_rejects_non_positive_wait_timeouts(field, message):
+    with pytest.raises(ValueError, match=message):
+        _backend(**{field: 0})
+
+
 def test_submit_posts_official_create_pod_schema(mocker):
     post = _mock_create_pod_response(mocker, {"id": "pod-123"})
     job = _training_job()
@@ -112,8 +179,12 @@ def test_submit_posts_official_create_pod_schema(mocker):
         },
         timeout=15.0,
     )
-    assert "dockerArgs" not in post.call_args.kwargs["json"]
-    assert handle == TrainingJobHandle(job_id="pod-123", run_id="run-42")
+    assert handle == TrainingJobHandle(
+        job_id="pod-123",
+        run_id="run-42",
+        runs_root="gs://runs",
+        model_name="product",
+    )
 
 
 def test_submit_sends_requested_gpu_count(mocker):
@@ -178,6 +249,8 @@ def test_terminate_deletes_pod(
     handle = TrainingJobHandle(
         job_id="pod-123",
         run_id="run-123",
+        runs_root="gs://runs",
+        model_name="product",
     )
 
     backend.terminate(handle)
@@ -200,10 +273,11 @@ def test_terminate_raises_for_http_error(
     response = mocker.Mock()
     response.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
 
-    mocker.patch(
+    delete = mocker.patch(
         "instacart_platform.runpod_backend.requests.delete",
         return_value=response,
     )
+    mocker.patch("instacart_platform.runpod_backend.time.sleep")
 
     backend = RunpodTrainingBackend(
         api_key="api-key",
@@ -213,10 +287,222 @@ def test_terminate_raises_for_http_error(
     handle = TrainingJobHandle(
         job_id="pod-123",
         run_id="run-123",
+        runs_root="gs://runs",
+        model_name="product",
     )
 
     with pytest.raises(
-        requests.HTTPError,
-        match="500 Server Error",
+        RuntimeError,
+        match="unable to terminate RunPod job",
     ):
         backend.terminate(handle)
+
+    assert delete.call_count == 5
+
+
+def test_terminate_ignores_missing_pod(mocker):
+    response = mocker.Mock()
+    response.status_code = 404
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.delete",
+        return_value=response,
+    )
+
+    _backend().terminate(_handle())
+
+    response.raise_for_status.assert_not_called()
+
+
+def test_get_status_succeeds_when_run_json_is_completed_and_success_exists(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs, status="completed", success=True)
+    get = mocker.patch("instacart_platform.runpod_backend.requests.get")
+
+    status = _backend().get_status(_handle())
+
+    assert status is JobStatus.SUCCEEDED
+    get.assert_not_called()
+
+
+def test_get_status_keeps_running_while_completed_run_awaits_success_marker(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs, status="completed", success=False)
+    mocker.patch(
+        "instacart_platform.runpod_backend.time.monotonic",
+        return_value=100.0,
+    )
+
+    status = _backend(completion_grace_seconds=30).get_status(_handle())
+
+    assert status is JobStatus.RUNNING
+
+
+def test_get_status_fails_when_completed_run_never_writes_success_marker(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs, status="completed", success=False)
+    backend = _backend(completion_grace_seconds=10)
+    handle = _handle()
+    mocker.patch(
+        "instacart_platform.runpod_backend.time.monotonic",
+        side_effect=[100.0, 111.0],
+    )
+
+    assert backend.get_status(handle) is JobStatus.RUNNING
+    assert backend.get_status(handle) is JobStatus.FAILED
+
+
+def test_get_status_fails_when_run_json_is_failed(gcs, mocker):
+    _configure_run_folder(gcs, status="failed")
+    get = mocker.patch("instacart_platform.runpod_backend.requests.get")
+
+    status = _backend().get_status(_handle())
+
+    assert status is JobStatus.FAILED
+    get.assert_not_called()
+
+
+def test_get_status_is_running_when_run_json_is_running_and_runtime_is_present(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs, status="running")
+    _mock_get_pod(mocker, {"runtime": {"uptimeInSeconds": 12}})
+
+    status = _backend().get_status(_handle())
+
+    assert status is JobStatus.RUNNING
+
+
+def test_get_status_fails_when_run_json_is_running_and_runtime_is_missing(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs, status="running")
+    _mock_get_pod(mocker, {"runtime": None})
+
+    status = _backend().get_status(_handle())
+
+    assert status is JobStatus.FAILED
+
+
+def test_get_status_is_pending_when_container_is_up_before_run_json(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs)
+    _mock_get_pod(mocker, {"runtime": {"uptimeInSeconds": 3}})
+
+    status = _backend().get_status(_handle())
+
+    assert status is JobStatus.PENDING
+
+
+def test_get_status_fails_when_runtime_disappears_before_run_json(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs)
+    backend = _backend()
+    handle = _handle()
+    _mock_get_pod(mocker, {"runtime": {"uptimeInSeconds": 3}})
+
+    assert backend.get_status(handle) is JobStatus.PENDING
+
+    _mock_get_pod(mocker, {"runtime": None})
+
+    assert backend.get_status(handle) is JobStatus.FAILED
+
+
+def test_get_status_is_pending_during_startup_grace_without_runtime(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs)
+    _mock_get_pod(mocker, {})
+    mocker.patch(
+        "instacart_platform.runpod_backend.time.monotonic",
+        return_value=50.0,
+    )
+
+    status = _backend(startup_grace_seconds=60).get_status(_handle())
+
+    assert status is JobStatus.PENDING
+
+
+def test_get_status_fails_when_startup_grace_expires_without_runtime(
+    gcs,
+    mocker,
+):
+    _configure_run_folder(gcs)
+    _mock_get_pod(mocker, {"runtime": None})
+    backend = _backend(startup_grace_seconds=10)
+    handle = _handle()
+    mocker.patch(
+        "instacart_platform.runpod_backend.time.monotonic",
+        side_effect=[20.0, 31.0],
+    )
+
+    assert backend.get_status(handle) is JobStatus.PENDING
+    assert backend.get_status(handle) is JobStatus.FAILED
+
+
+def test_wait_returns_succeeded_when_run_folder_is_complete(gcs):
+    _configure_run_folder(gcs, status="completed", success=True)
+
+    result = _backend().wait(_handle())
+
+    assert result == TrainingResult(
+        run_id="run-42",
+        status=JobStatus.SUCCEEDED,
+    )
+
+
+def test_wait_returns_failed_when_run_folder_is_failed(gcs):
+    _configure_run_folder(gcs, status="failed")
+
+    result = _backend().wait(_handle())
+
+    assert result == TrainingResult(
+        run_id="run-42",
+        status=JobStatus.FAILED,
+    )
+
+
+def test_wait_polls_until_run_succeeds(gcs, mocker):
+    _configure_run_folder(gcs)
+    backend = _backend(poll_interval_seconds=2)
+    mocker.patch.object(
+        backend,
+        "get_status",
+        side_effect=[JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED],
+    )
+    sleep = mocker.patch("instacart_platform.runpod_backend.time.sleep")
+    mocker.patch(
+        "instacart_platform.runpod_backend.time.monotonic",
+        side_effect=[0.0, 1.0, 2.0],
+    )
+
+    result = backend.wait(_handle())
+
+    assert result.status is JobStatus.SUCCEEDED
+    assert sleep.call_count == 2
+    sleep.assert_called_with(2)
+
+
+def test_wait_times_out_when_run_never_finishes(mocker):
+    backend = _backend(max_wait_seconds=10, poll_interval_seconds=1)
+    mocker.patch.object(backend, "get_status", return_value=JobStatus.PENDING)
+    mocker.patch("instacart_platform.runpod_backend.time.sleep")
+    mocker.patch(
+        "instacart_platform.runpod_backend.time.monotonic",
+        side_effect=[0.0, 11.0],
+    )
+
+    with pytest.raises(TimeoutError, match="did not complete within 10 seconds"):
+        backend.wait(_handle())

@@ -25,3 +25,7 @@ output "workload_identity_provider_name" {
 output "main_branch_principal_set" {
   value = local.main_branch_principal_set
 }
+
+output "repository_principal_set" {
+  value = local.repository_principal_set
+}

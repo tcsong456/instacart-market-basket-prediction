@@ -15,6 +15,8 @@ class _InMemoryBackend:
         return TrainingJobHandle(
             job_id=f"job-{job.run_id}",
             run_id=job.run_id,
+            runs_root=job.runs_root,
+            model_name=job.model_name,
         )
 
     def wait(self, handle: TrainingJobHandle) -> TrainingResult:
@@ -35,6 +37,8 @@ def test_in_memory_backend_follows_training_contract():
         image="image:tag",
         command=("-m", "instacart_rnn.run"),
         gpu_type="rtx_4090",
+        runs_root="gs://runs",
+        model_name="product",
     )
 
     handle = contract.submit(job)
@@ -43,6 +47,8 @@ def test_in_memory_backend_follows_training_contract():
 
     assert handle.job_id == "job-run-1"
     assert handle.run_id == "run-1"
+    assert handle.runs_root == "gs://runs"
+    assert handle.model_name == "product"
     assert result.status is JobStatus.SUCCEEDED
     assert result.run_id == "run-1"
     assert backend.terminated == ["job-run-1"]

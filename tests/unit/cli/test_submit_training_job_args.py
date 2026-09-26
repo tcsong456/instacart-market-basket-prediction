@@ -1,6 +1,6 @@
 import pytest
 
-from instacart_platform.submit_training_job import parse_args
+from instacart_platform.rnn_submit_training_job import parse_args
 
 REQUIRED_ARGS = [
     "submit_training_job.py",

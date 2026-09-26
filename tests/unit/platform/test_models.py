@@ -16,6 +16,8 @@ def _training_job(**overrides) -> TrainingJob:
         "image": "image:tag",
         "command": ("-m", "instacart_rnn.run"),
         "gpu_type": "rtx_4090",
+        "runs_root": "gs://runs",
+        "model_name": "product",
     }
     payload.update(overrides)
     return TrainingJob(**payload)
@@ -52,7 +54,12 @@ def test_job_status_values():
 
 
 def test_training_result_records_status():
-    handle = TrainingJobHandle(job_id="job-1", run_id="run-1")
+    handle = TrainingJobHandle(
+        job_id="job-1",
+        run_id="run-1",
+        runs_root="gs://runs",
+        model_name="product",
+    )
     result = TrainingResult(run_id=handle.run_id, status=JobStatus.SUCCEEDED)
 
     assert handle.job_id == "job-1"
@@ -61,7 +68,12 @@ def test_training_result_records_status():
 
 
 def test_training_job_handle_is_frozen():
-    handle = TrainingJobHandle(job_id="job-1", run_id="run-1")
+    handle = TrainingJobHandle(
+        job_id="job-1",
+        run_id="run-1",
+        runs_root="gs://runs",
+        model_name="product",
+    )
 
     with pytest.raises(FrozenInstanceError):
         handle.job_id = "job-2"
