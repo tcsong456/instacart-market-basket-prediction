@@ -297,10 +297,10 @@ if os.fork() == 0:
         os._exit(0)
 
     signal.signal(signal.SIGTERM, lambda *_: _mark("15"))
+    ready.write_text("ready")
     time.sleep(30)
     worker_marker.write_text("missed")
     os._exit(0)
-ready.write_text("ready")
 time.sleep(30)
 """
     process = subprocess.Popen(
