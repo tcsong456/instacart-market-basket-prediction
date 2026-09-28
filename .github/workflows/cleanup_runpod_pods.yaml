@@ -1,0 +1,40 @@
+name: Cleanup RunPod Pods
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.TRAINING_RUNNER_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Reconcile RunPod pods
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          python -m instacart_platform.cleanup_runpod_pods \
+            --max-pod-age 6.5 \
+            --runs-root "${{ vars.RUNS_BUCKET_URI }}" \
+            --template-id "${{ vars.RUNPOD_TEMPLATE_ID }}"

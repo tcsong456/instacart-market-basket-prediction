@@ -9,6 +9,17 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+class CleanupReason(str, Enum):
+    RUN_FINISHED = "run_finished"
+    POD_EXPIRED = "pod_expired"
+
+
+@dataclass(frozen=True)
+class ManagedPod:
+    model_name: str
+    run_id: str
+
+
 @dataclass(frozen=True)
 class TrainingJob:
     run_id: str
