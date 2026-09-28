@@ -189,7 +189,7 @@ def test_submit_posts_official_create_pod_schema(mocker):
             "Content-Type": "application/json",
         },
         json={
-            "name": "instacart-run-42",
+            "name": "instacart-product-run-42",
             "imageName": "ghcr.io/example/trainer:latest",
             "gpuTypeIds": ["NVIDIA L4"],
             "gpuCount": 1,
@@ -728,3 +728,182 @@ def test_wait_times_out_when_run_never_finishes(mocker):
 
     with pytest.raises(TimeoutError, match="did not complete within 10 seconds"):
         backend.wait(_handle())
+
+
+def _pod_list_response(
+    mocker,
+    pods,
+    *,
+    has_next_page=False,
+    next_cursor=None,
+):
+    response = mocker.Mock()
+    response.ok = True
+    response.status_code = 200
+    response.text = ""
+    response.json.return_value = {
+        "pods": pods,
+        "pagination": {
+            "hasNextPage": has_next_page,
+            "nextCursor": next_cursor,
+        },
+    }
+    response.raise_for_status.return_value = None
+    return response
+
+
+def test_list_pods_returns_the_only_page(mocker):
+    page = [{"id": "pod-1", "name": "instacart-product-run-1"}]
+    response = _pod_list_response(mocker, page)
+    get = mocker.patch(
+        "instacart_platform.runpod_backend.requests.get",
+        return_value=response,
+    )
+
+    pods = _backend(timeout_seconds=15).list_pods()
+
+    assert pods == page
+    get.assert_called_once_with(
+        f"{RUNPOD_V2_API_URL}/pods",
+        headers={
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json",
+        },
+        params={},
+        timeout=15,
+    )
+
+
+def test_list_pods_follows_the_cursor_until_the_last_page(mocker):
+    first = _pod_list_response(
+        mocker,
+        [{"id": "pod-1"}],
+        has_next_page=True,
+        next_cursor="page-2",
+    )
+    second = _pod_list_response(mocker, [{"id": "pod-2"}])
+    get = mocker.patch(
+        "instacart_platform.runpod_backend.requests.get",
+        side_effect=[first, second],
+    )
+
+    pods = _backend().list_pods()
+
+    assert pods == [{"id": "pod-1"}, {"id": "pod-2"}]
+    assert get.call_args_list[0].kwargs["params"] == {}
+    assert get.call_args_list[1].kwargs["params"] == {"cursor": "page-2"}
+
+
+def test_list_pods_raises_when_the_body_is_not_an_object(mocker):
+    response = mocker.Mock()
+    response.ok = True
+    response.text = "[]"
+    response.json.return_value = []
+    response.raise_for_status.return_value = None
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.get",
+        return_value=response,
+    )
+
+    with pytest.raises(RuntimeError, match="Unexpected RunPod pod-list response"):
+        _backend().list_pods()
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"pagination": {"hasNextPage": False}}, "Unexpected RunPod pods response"),
+        ({"pods": []}, "Unexpected RunPod pagination response"),
+        (
+            {"pods": [{"id": "pod-1"}], "pagination": []},
+            "Unexpected RunPod pagination response",
+        ),
+    ],
+)
+def test_list_pods_raises_when_the_page_shape_is_wrong(mocker, payload, message):
+    response = mocker.Mock()
+    response.ok = True
+    response.text = ""
+    response.json.return_value = payload
+    response.raise_for_status.return_value = None
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.get",
+        return_value=response,
+    )
+
+    with pytest.raises(RuntimeError, match=message):
+        _backend().list_pods()
+
+
+@pytest.mark.parametrize("next_cursor", [None, ""])
+def test_list_pods_raises_when_another_page_has_no_cursor(mocker, next_cursor):
+    response = _pod_list_response(
+        mocker,
+        [{"id": "pod-1"}],
+        has_next_page=True,
+        next_cursor=next_cursor,
+    )
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.get",
+        return_value=response,
+    )
+
+    with pytest.raises(RuntimeError, match="without a valid nextCursor"):
+        _backend().list_pods()
+
+
+def test_list_pods_raises_for_http_error(mocker):
+    response = _http_error_response(mocker, status_code=500, text="unavailable")
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.get",
+        return_value=response,
+    )
+
+    with pytest.raises(requests.HTTPError):
+        _backend().list_pods()
+
+
+def test_delete_pod_deletes_through_the_v1_api(mocker):
+    response = mocker.Mock()
+    response.ok = True
+    response.status_code = 200
+    delete = mocker.patch(
+        "instacart_platform.runpod_backend.requests.delete",
+        return_value=response,
+    )
+
+    _backend(timeout_seconds=15).delete_pod("pod-123")
+
+    delete.assert_called_once_with(
+        f"{RUNPOD_API_URL}/pods/pod-123",
+        headers={
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json",
+        },
+        timeout=15,
+    )
+    response.raise_for_status.assert_called_once_with()
+
+
+def test_delete_pod_ignores_a_missing_pod(mocker):
+    response = mocker.Mock()
+    response.status_code = 404
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.delete",
+        return_value=response,
+    )
+
+    _backend().delete_pod("pod-123")
+
+    response.raise_for_status.assert_not_called()
+
+
+def test_delete_pod_raises_for_http_error(mocker):
+    response = _http_error_response(mocker, status_code=500, text="unavailable")
+    mocker.patch(
+        "instacart_platform.runpod_backend.requests.delete",
+        return_value=response,
+    )
+
+    with pytest.raises(requests.HTTPError):
+        _backend().delete_pod("pod-123")

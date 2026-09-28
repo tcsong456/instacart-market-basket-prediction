@@ -287,6 +287,90 @@ class RunpodTrainingBackend:
             f"Pod may still be running and accumulating charges."
         ) from last_error
 
+    def list_pods(self) -> list[dict]:
+        pods: list[dict] = []
+        cursor: str | None = None
+
+        while True:
+            params = {}
+            if cursor is not None:
+                params["cursor"] = cursor
+
+            response = requests.get(
+                f"{RUNPOD_V2_API_URL}/pods",
+                headers=self._headers(),
+                params=params,
+                timeout=self._timeout_seconds,
+            )
+
+            if not response.ok:
+                logger.error(
+                    "Failed to list RunPod pods: status=%s body=%s",
+                    response.status_code,
+                    response.text,
+                )
+
+            response.raise_for_status()
+
+            payload = response.json()
+
+            if not isinstance(payload, dict):
+                raise RuntimeError(f"Unexpected RunPod pod-list response: {payload!r}")
+
+            page_pods = payload.get("pods")
+            pagination = payload.get("pagination")
+
+            if not isinstance(page_pods, list):
+                raise RuntimeError(f"Unexpected RunPod pods response: {payload!r}")
+
+            if not isinstance(pagination, dict):
+                raise RuntimeError(
+                    f"Unexpected RunPod pagination response: {payload!r}"
+                )
+
+            pods.extend(page_pods)
+
+            if not pagination.get("hasNextPage", False):
+                break
+
+            cursor = pagination.get("nextCursor")
+
+            if not isinstance(cursor, str) or not cursor:
+                raise RuntimeError(
+                    "RunPod reported hasNextPage=true without a valid nextCursor"
+                )
+
+        return pods
+
+    def delete_pod(self, pod_id: str) -> None:
+        response = requests.delete(
+            f"{RUNPOD_API_URL}/pods/{pod_id}",
+            headers=self._headers(),
+            timeout=self._timeout_seconds,
+        )
+
+        if response.status_code == 404:
+            logger.info(
+                "RunPod pod %s no longer exists",
+                pod_id,
+            )
+            return
+
+        if not response.ok:
+            logger.error(
+                "Failed to delete RunPod pod %s: status=%s body=%s",
+                pod_id,
+                response.status_code,
+                response.text,
+            )
+
+        response.raise_for_status()
+
+        logger.info(
+            "Deleted RunPod pod %s",
+            pod_id,
+        )
+
     def _get_pod(
         self,
         job_id: str,
@@ -408,7 +492,7 @@ class RunpodTrainingBackend:
         self, job: TrainingJob, gpu_type: str
     ) -> dict[str, Any]:
         return {
-            "name": f"instacart-{job.run_id}",
+            "name": f"instacart-{job.model_name}-{job.run_id}",
             "imageName": job.image,
             "gpuTypeIds": [gpu_type],
             "gpuCount": job.gpu_count,
