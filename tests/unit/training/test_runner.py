@@ -82,7 +82,7 @@ def _run_paths(**overrides):
 def _inference_config(**overrides):
     values = {
         "model_name": "tiny",
-        "eval_path": "eval.parquet",
+        "input_path": "eval.parquet",
         "checkpoint_path": "ckpt",
         "output_path": "output",
         "lstm_size": 32,
