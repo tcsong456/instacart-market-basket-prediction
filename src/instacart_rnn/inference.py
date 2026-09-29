@@ -74,7 +74,7 @@ def main() -> None:
 
     config = InferenceRunConfig(
         model_name=args.model,
-        eval_path=args.eval_path,
+        input_path=args.eval_path,
         checkpoint_path=args.checkpoint_path,
         output_path=args.output_path,
         rows_per_write=args.rows_per_write,

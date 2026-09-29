@@ -1,11 +1,23 @@
+import pytest
+
 from instacart_etl_rnn.simulation.create_order_product_split import (
     select_stacking_model_users,
     split_order_products_by_role,
 )
 
 
+@pytest.mark.parametrize(
+    ("period", "train_orders"),
+    [
+        ("initial", {1, 2}),
+        ("t1", {1, 2, 3}),
+        ("t2", {1, 2, 3, 4}),
+    ],
+)
 def test_select_stacking_model_users_filters_and_sets_availability(
     spark,
+    period,
+    train_orders,
 ):
     df = spark.createDataFrame(
         [
@@ -28,7 +40,7 @@ def test_select_stacking_model_users_filters_and_sets_availability(
         """,
     )
 
-    result = select_stacking_model_users(df)
+    result = select_stacking_model_users(df, period)
 
     actual = {
         row.order_number: (
@@ -39,15 +51,23 @@ def test_select_stacking_model_users_filters_and_sets_availability(
     }
 
     assert actual == {
-        1: (True, True),
-        2: (True, True),
-        3: (True, True),
-        4: (False, True),
+        order_number: (order_number in train_orders, True)
+        for order_number in range(1, 5)
     }
 
 
+@pytest.mark.parametrize(
+    ("period", "train_orders"),
+    [
+        ("initial", {1, 2, 3, 4}),
+        ("t1", {1, 2, 3, 4, 5}),
+        ("t2", {1, 2, 3, 4, 5, 6}),
+    ],
+)
 def test_select_stacking_model_users_rewrites_train_val_leaves_evaluation_untouched(
     spark,
+    period,
+    train_orders,
 ):
     """Rewrite train/val for stacking users; evaluation stays false (established)."""
 
@@ -75,7 +95,7 @@ def test_select_stacking_model_users_rewrites_train_val_leaves_evaluation_untouc
         """,
     )
 
-    result = select_stacking_model_users(df)
+    result = select_stacking_model_users(df, period)
     rows = result.orderBy("order_number").collect()
 
     assert [row.user_id for row in rows] == [1, 1, 1, 1, 1, 1]
@@ -90,12 +110,8 @@ def test_select_stacking_model_users_rewrites_train_val_leaves_evaluation_untouc
     }
 
     assert actual == {
-        1: (True, True, False),
-        2: (True, True, False),
-        3: (True, True, False),
-        4: (True, True, False),
-        5: (True, True, False),
-        6: (False, True, False),
+        order_number: (order_number in train_orders, True, False)
+        for order_number in range(1, 7)
     }
     assert all(row.is_evaluation_available is False for row in rows)
 
@@ -103,7 +119,7 @@ def test_select_stacking_model_users_rewrites_train_val_leaves_evaluation_untouc
         split_order_products_by_role(result)
     )
 
-    assert {row.order_number for row in train_history.collect()} == {1, 2, 3, 4, 5}
+    assert {row.order_number for row in train_history.collect()} == train_orders
     assert {row.order_number for row in validation_history.collect()} == {
         1,
         2,
@@ -113,3 +129,23 @@ def test_select_stacking_model_users_rewrites_train_val_leaves_evaluation_untouc
         6,
     }
     assert evaluation_history.count() == 0
+
+
+def test_select_stacking_model_users_rejects_unsupported_period(spark):
+    df = spark.createDataFrame(
+        [
+            (1, 1, 6, "established", "stacking_train", False, False),
+        ],
+        """
+        user_id int,
+        order_number int,
+        order_history int,
+        user_cohort string,
+        development_split string,
+        is_train_available boolean,
+        is_validation_available boolean
+        """,
+    )
+
+    with pytest.raises(ValueError, match="Unsupported simulation period: t3"):
+        select_stacking_model_users(df, "t3")

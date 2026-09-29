@@ -221,22 +221,22 @@ def test_simulation_silver_period_split_chain_end_to_end(spark, tmp_path):
         contract_path=str(CONTRACT_PATH),
     )
 
-    stacking_dir = split_path / "stacking_train"
     stacking_train = read_parquet(
-        stacking_dir / "order_products_train",
+        split_path / "t2" / "stacking_train" / "order_products_train",
         spark,
     )
     stacking_validation = read_parquet(
-        stacking_dir / "order_products_validation",
+        split_path / "stacking_train" / "order_products_validation",
         spark,
     )
 
     assert _user_ids(stacking_train) == {STACKING_USER}
     assert _user_ids(stacking_validation) == {STACKING_USER}
     assert _order_ids(stacking_train) == {
-        _order_id(STACKING_USER, n) for n in range(1, 6)
+        _order_id(STACKING_USER, n) for n in range(1, 7)
     }
     assert _order_ids(stacking_validation) == {
         _order_id(STACKING_USER, n) for n in range(1, 7)
     }
-    assert not (stacking_dir / "order_products_evaluation").exists()
+    assert not (split_path / "stacking_train" / "order_products_train").exists()
+    assert not (split_path / "stacking_train" / "order_products_evaluation").exists()

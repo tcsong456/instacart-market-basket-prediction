@@ -257,9 +257,14 @@ def test_run_order_products_split_job_stacking_train_end_to_end(spark, tmp_path)
         contract_path=str(CONTRACT_PATH),
     )
 
-    stacking_dir = output_path / "stacking_train"
-    train = read_parquet(stacking_dir / "order_products_train", spark)
-    validation = read_parquet(stacking_dir / "order_products_validation", spark)
+    train = read_parquet(
+        output_path / "t1" / "stacking_train" / "order_products_train",
+        spark,
+    )
+    validation = read_parquet(
+        output_path / "stacking_train" / "order_products_validation",
+        spark,
+    )
 
     assert _order_ids(train) == {1001, 1002}
     assert _order_ids(validation) == {1001, 1002, 1003}
@@ -267,5 +272,8 @@ def test_run_order_products_split_job_stacking_train_end_to_end(spark, tmp_path)
     assert set(train.columns) == set(COLUMNS)
     assert set(validation.columns) == set(COLUMNS)
 
-    assert not (stacking_dir / "order_products_evaluation").exists()
-    assert not (output_path / "t1").exists()
+    assert not (output_path / "stacking_train" / "order_products_train").exists()
+    assert not (
+        output_path / "t1" / "stacking_train" / "order_products_validation"
+    ).exists()
+    assert not (output_path / "stacking_train" / "order_products_evaluation").exists()
