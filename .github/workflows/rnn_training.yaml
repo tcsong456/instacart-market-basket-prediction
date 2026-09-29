@@ -22,6 +22,15 @@ on:
 
 jobs:
   train:
+    strategy:
+        fail-fast: false
+        matrix:
+          model:
+            - product
+            - aisle
+            - reorder_size_gmm
+            - reorder_size_rnn
+    
     runs-on: ubuntu-latest
 
     permissions:
@@ -65,5 +74,5 @@ jobs:
             --mode "${{ inputs.mode }}" \
             --gold-root "${{ vars.GOLD_BUCKET_URI }}" \
             --runs-root "${{ vars.RUNS_BUCKET_URI }}" \
-            --model-name product \
+            --model-name "${{ matrix.model }}" \
             --gpu-type "NVIDIA L4"
