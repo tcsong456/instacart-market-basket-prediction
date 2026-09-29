@@ -252,10 +252,6 @@ build_features() {
         "${source}" "${snapshot}" "${mode}"
 
     run_with_retry bash \
-        "${ROOT_DIR}/scripts/feature/create_user_product_count_data.sh" \
-        "${source}" "${snapshot}" "${mode}"
-
-    run_with_retry bash \
         "${ROOT_DIR}/scripts/feature/create_product_history_data.sh" \
         "${source}" "${snapshot}" "${mode}"
 
