@@ -83,19 +83,43 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def build_inference_config(
+    *,
+    args: argparse.Namespace,
+    input_path: str,
+) -> InferenceRunConfig:
+    return InferenceRunConfig(
+        model_name=args.model,
+        input_path=input_path,
+        checkpoint_path="",
+        output_path="",
+        rows_per_write=args.rows_per_write,
+        batch_size=args.eval_batch_size,
+        read_batch_size=args.read_batch_size,
+        lstm_size=args.lstm_size,
+        max_candidate=args.max_candidate,
+        num_workers=args.num_workers,
+        amp=args.amp,
+        pin_memory=args.pin_memory,
+    )
+
+
 def main() -> None:
     args = parse_args()
 
     configure_logging()
 
+    data_root = args.data_root.rstrip("/")
+
     if "reorder_size" in args.model:
-        base_path = f"{args.data_root.rstrip('/')}/reorder_size_training_data"
+        base_path = f"{data_root}/reorder_size_training_data"
+        stacking_path = f"{data_root}/stacking_train/reorder_size_training_data_train"
     else:
-        base_path = f"{args.data_root.rstrip('/')}/{args.model}_training_data"
+        base_path = f"{data_root}/{args.model}_training_data"
+        stacking_path = f"{data_root}/stacking_train/{args.model}_training_data_train"
 
     train_path = f"{base_path}_train"
     validation_path = f"{base_path}_validation"
-    eval_path = f"{base_path}_evaluation"
 
     train_config = TrainingRunConfig(
         model_name=args.model,
@@ -116,26 +140,22 @@ def main() -> None:
         pin_memory=args.pin_memory,
     )
 
-    inference_config = InferenceRunConfig(
-        model_name=args.model,
-        eval_path=eval_path,
-        checkpoint_path="",
-        output_path="",
-        rows_per_write=args.rows_per_write,
-        batch_size=args.eval_batch_size,
-        read_batch_size=args.read_batch_size,
-        lstm_size=args.lstm_size,
-        max_candidate=args.max_candidate,
-        num_workers=args.num_workers,
-        amp=args.amp,
-        pin_memory=args.pin_memory,
-    )
+    inference_configs = {
+        "stacking_train": build_inference_config(
+            args=args,
+            input_path=stacking_path,
+        ),
+        "evaluation": build_inference_config(
+            args=args,
+            input_path=f"{base_path}_evaluation",
+        ),
+    }
 
     execute_run(
         run_id=args.run_id,
         runs_root=args.runs_root,
         training_config=train_config,
-        inference_config=inference_config,
+        inference_configs=inference_configs,
         git_commit=args.git_commit,
         image=args.image,
     )

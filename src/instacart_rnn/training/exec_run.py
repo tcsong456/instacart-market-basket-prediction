@@ -23,7 +23,7 @@ def execute_run(
     run_id: str,
     runs_root: str,
     training_config: TrainingRunConfig,
-    inference_config: InferenceRunConfig,
+    inference_configs: dict[str, InferenceRunConfig],
     git_commit: str,
     image: str,
 ) -> str:
@@ -62,15 +62,16 @@ def execute_run(
             paths=paths,
         )
 
-        resolved_inference_config = InferenceRunConfig(
-            **{
-                **asdict(inference_config),
-                "checkpoint_path": paths.best_checkpoint,
-                "output_path": paths.artifacts,
-            }
-        )
+        for split, inference_config in inference_configs.items():
+            resolved_inference_config = InferenceRunConfig(
+                **{
+                    **asdict(inference_config),
+                    "checkpoint_path": paths.best_checkpoint,
+                    "output_path": f"{paths.artifacts}/{split}",
+                }
+            )
 
-        run_inference(resolved_inference_config)
+            run_inference(resolved_inference_config)
 
         completed_at = utc_now()
 

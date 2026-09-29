@@ -66,7 +66,7 @@ class InferenceRunConfig:
     """Configuration required for one inference export run."""
 
     model_name: str
-    eval_path: str
+    input_path: str
     checkpoint_path: str
     output_path: str
     lstm_size: int
@@ -280,11 +280,11 @@ def run_inference(
 
     logger.info(
         "Building evaluation dataloader from %s",
-        config.eval_path,
+        config.input_path,
     )
 
     dataloader = spec.dataloader_factory(
-        path=config.eval_path,
+        path=config.input_path,
         batch_size=config.batch_size,
         read_batch_size=config.read_batch_size,
         num_workers=config.num_workers,
@@ -292,7 +292,7 @@ def run_inference(
         drop_last=False,
     )
 
-    num_rows = spec.count_rows(config.eval_path)
+    num_rows = spec.count_rows(config.input_path)
 
     logger.info(
         "Evaluation rows: %d",

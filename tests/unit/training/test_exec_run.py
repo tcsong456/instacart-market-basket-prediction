@@ -29,7 +29,7 @@ def _training_config(**overrides):
 def _inference_config(**overrides):
     values = {
         "model_name": "product",
-        "eval_path": "eval.parquet",
+        "input_path": "eval.parquet",
         "checkpoint_path": "",
         "output_path": "",
         "lstm_size": 32,
@@ -43,7 +43,7 @@ def _execute_run(tmp_path, **overrides):
         "run_id": "run-1",
         "runs_root": str(tmp_path),
         "training_config": _training_config(),
-        "inference_config": _inference_config(),
+        "inference_configs": {"evaluation": _inference_config()},
         "git_commit": "abc123",
         "image": "img:tag",
     }
@@ -102,8 +102,8 @@ def test_execute_run_writes_completed_status_metrics_and_success_marker(
     assert Path(inference_config.checkpoint_path) == (
         run_root / "checkpoints" / "best.pt"
     )
-    assert Path(inference_config.output_path) == run_root / "artifacts"
-    assert inference_config.eval_path == "eval.parquet"
+    assert Path(inference_config.output_path) == run_root / "artifacts" / "evaluation"
+    assert inference_config.input_path == "eval.parquet"
 
 
 def test_execute_run_marks_failed_and_skips_success_when_training_raises(

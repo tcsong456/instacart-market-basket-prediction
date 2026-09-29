@@ -243,6 +243,7 @@ def test_run_order_products_split_job_stacking_train(
 
     mock_select_stacking.assert_called_once_with(
         order_products,
+        "t1",
     )
 
     mock_split.assert_called_once_with(
@@ -277,7 +278,7 @@ def test_run_order_products_split_job_stacking_train(
 
     assert mock_write.call_args_list == [
         mocker.call(
-            "gs://bucket/output/stacking_train/order_products_train",
+            "gs://bucket/output/t1/stacking_train/order_products_train",
             train_output,
         ),
         mocker.call(

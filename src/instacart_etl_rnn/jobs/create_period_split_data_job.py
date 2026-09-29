@@ -45,8 +45,9 @@ def run_order_products_split_job(
     flags.
 
     Base-model mode writes training, validation, and evaluation datasets for
-    the requested simulation period. Stacking mode writes only training and
-    validation datasets under the ``stacking_train`` output path.
+    the requested simulation period. Stacking mode writes the timeline-specific
+    training snapshot under ``{period}/stacking_train`` and leaves the shared
+    validation snapshot under ``stacking_train``.
 
     Each output is restricted to the persisted split columns and validated
     against the base order-products split contract before being written.
@@ -78,9 +79,17 @@ def run_order_products_split_job(
 
     if mode == "base_train":
         model = select_base_model_users(order_products)
+        output_directories = {
+            "order_products_train": f"{output_path}/{period}",
+            "order_products_validation": f"{output_path}/{period}",
+            "order_products_evaluation": f"{output_path}/{period}",
+        }
     else:
-        period = "stacking_train"
-        model = select_stacking_model_users(order_products)
+        model = select_stacking_model_users(order_products, period)
+        output_directories = {
+            "order_products_train": f"{output_path}/{period}/stacking_train",
+            "order_products_validation": f"{output_path}/stacking_train",
+        }
 
     train_history, evaluation_history, validation_history = (
         split_order_products_by_role(model)
@@ -113,6 +122,6 @@ def run_order_products_split_job(
         )
 
         write_parquet(
-            join_path(f"{output_path}/{period}", name),
+            join_path(output_directories[name], name),
             output_df,
         )

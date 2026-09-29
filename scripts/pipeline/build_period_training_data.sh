@@ -308,23 +308,34 @@ build_base_period() {
 
 
 build_stacking_data() {
-    local mode
+    local period
 
     echo
     echo "============================================================"
     echo "Building stacking training data"
     echo "============================================================"
 
-    run_with_retry bash \
-        "${ROOT_DIR}/scripts/simulation/create_order_simulation_split_data.sh" \
-        "${SOURCE}" "t2" "stacking_train"
+    for period in initial t1 t2; do
+        echo
+        echo "Building stacking train data: period=${period}"
 
-    for mode in train validation; do
+        run_with_retry bash \
+            "${ROOT_DIR}/scripts/simulation/create_order_simulation_split_data.sh" \
+            "${SOURCE}" "${period}" "stacking_train"
+
         build_features \
             "${SOURCE}" \
-            "stacking_train" \
-            "${mode}"
+            "${period}/stacking_train" \
+            "train"
     done
+
+    echo
+    echo "Building shared stacking validation data"
+
+    build_features \
+        "${SOURCE}" \
+        "stacking_train" \
+        "validation"
 }
 
 
