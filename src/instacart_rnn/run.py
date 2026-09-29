@@ -88,7 +88,10 @@ def main() -> None:
 
     configure_logging()
 
-    base_path = f"{args.data_root.rstrip('/')}/{args.model}_training_data"
+    if "reorder_size" in args.model:
+        base_path = f"{args.data_root.rstrip('/')}/reorder_size_training_data"
+    else:
+        base_path = f"{args.data_root.rstrip('/')}/{args.model}_training_data"
 
     train_path = f"{base_path}_train"
     validation_path = f"{base_path}_validation"
