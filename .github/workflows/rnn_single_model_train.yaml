@@ -19,6 +19,27 @@ on:
         options:
           - sample
           - curated
+        
+      model:
+        description: "Trainig model"
+        required: true
+        type: choice
+        options:
+          - product
+          - aisle
+          - reorder_size_gmm
+          - reorder_size_rnn
+      
+      gpu_type:
+        description: "GPU used for training"
+        required: true
+        type: choice
+        options:
+          - NVIDIA L4
+          - NVIDIA RTX A5000
+          - NVIDIA GeForce RTX 4090
+          - NVIDIA A40
+          - NVIDIA L40S
 
 jobs:
   train:    
@@ -65,5 +86,5 @@ jobs:
             --mode "${{ inputs.mode }}" \
             --gold-root "${{ vars.GOLD_BUCKET_URI }}" \
             --runs-root "${{ vars.RUNS_BUCKET_URI }}" \
-            --model-name aisle \
-            --gpu-type "NVIDIA L4"
+            --model-name "${{ inputs.model }}" \
+            --gpu-type "${{ inputs.gpu_type }}"
