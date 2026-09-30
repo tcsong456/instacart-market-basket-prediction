@@ -242,12 +242,12 @@ def test_submit_raises_when_pod_id_is_invalid(mocker, pod_id):
         _backend().submit(_training_job())
 
 
-def test_submit_raises_for_http_error(mocker):
+def test_submit_raises_immediately_for_a_non_500_response(mocker):
     response = _http_error_response(
         mocker,
-        status_code=500,
-        payload={"error": "internal failure"},
-        text="internal failure",
+        status_code=400,
+        payload={"error": "There are no instances currently available"},
+        text="There are no instances currently available",
     )
     post = mocker.patch(
         "instacart_platform.runpod_backend.requests.post",
@@ -301,7 +301,7 @@ def test_submit_falls_back_to_the_next_gpu_when_preferred_has_no_capacity(
     assert post.call_args_list[1].kwargs["json"]["gpuCount"] == 2
 
 
-def test_submit_raises_when_no_gpu_type_has_capacity(mocker):
+def test_submit_raises_when_every_gpu_returns_http_500(mocker):
     error = "create pod: There are no instances currently available"
     responses = [_capacity_response(mocker, error) for _ in range(5)]
     post = mocker.patch(
@@ -311,44 +311,46 @@ def test_submit_raises_when_no_gpu_type_has_capacity(mocker):
 
     with pytest.raises(
         RuntimeError,
-        match="No configured RunPod GPU type currently has capacity",
+        match="RunPod pod creation failed for every configured GPU type",
     ) as exc_info:
         _backend().submit(_training_job())
 
+    message = str(exc_info.value)
     assert post.call_count == 5
-    assert "NVIDIA L4" in str(exc_info.value)
-    assert "NVIDIA L40S" in str(exc_info.value)
+    assert f"NVIDIA L4 (HTTP 500): {error}" in message
+    assert f"NVIDIA L40S (HTTP 500): {error}" in message
     for response in responses:
         response.raise_for_status.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    ("status_code", "payload"),
+    "payload",
     [
-        (500, {"error": "template not found"}),
-        (500, {"error": {"message": "There are no instances currently available"}}),
-        (400, {"error": "There are no instances currently available"}),
-        (500, None),
+        {"error": "template not found"},
+        {"error": {"message": "There are no instances currently available"}},
+        None,
     ],
 )
-def test_submit_does_not_try_another_gpu_after_a_non_capacity_error(
-    mocker,
-    status_code,
-    payload,
-):
+def test_submit_tries_every_gpu_when_create_returns_http_500(mocker, payload):
+    response = _http_error_response(
+        mocker,
+        status_code=500,
+        payload=payload,
+    )
     post = mocker.patch(
         "instacart_platform.runpod_backend.requests.post",
-        return_value=_http_error_response(
-            mocker,
-            status_code=status_code,
-            payload=payload,
-        ),
+        return_value=response,
     )
 
-    with pytest.raises(requests.HTTPError, match="boom"):
+    with pytest.raises(
+        RuntimeError,
+        match="failed for every configured GPU type",
+    ) as exc_info:
         _backend().submit(_training_job())
 
-    assert post.call_count == 1
+    assert post.call_count == 5
+    assert "(HTTP 500): failure" in str(exc_info.value)
+    response.raise_for_status.assert_not_called()
 
 
 def test_submit_does_not_try_another_gpu_when_create_succeeds_without_a_pod_id(
