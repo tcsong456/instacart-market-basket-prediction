@@ -130,6 +130,34 @@ def test_execute_run_marks_failed_and_skips_success_when_training_raises(
     run_inference.assert_not_called()
 
 
+def test_execute_run_does_not_retrain_when_success_marker_exists(tmp_path, mocker):
+    run_root = tmp_path / "product" / "run-1"
+    run_root.mkdir(parents=True)
+    completed = {
+        "completed_at": "2026-01-01T01:00:00+00:00",
+        "git_commit": "abc123",
+        "image": "img:tag",
+        "model_name": "product",
+        "run_id": "run-1",
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "status": "completed",
+    }
+    (run_root / "run.json").write_text(
+        json.dumps(completed),
+        encoding="utf-8",
+    )
+    (run_root / "_SUCCESS").write_text("", encoding="utf-8")
+    run_training = mocker.patch("instacart_rnn.training.exec_run.run_training")
+    run_inference = mocker.patch("instacart_rnn.training.exec_run.run_inference")
+
+    returned_run_id = _execute_run(tmp_path)
+
+    assert returned_run_id == "run-1"
+    assert json.loads((run_root / "run.json").read_text(encoding="utf-8")) == completed
+    run_training.assert_not_called()
+    run_inference.assert_not_called()
+
+
 def test_execute_run_marks_failed_when_inference_raises(tmp_path, mocker):
     mocker.patch(
         "instacart_rnn.training.exec_run.run_training",

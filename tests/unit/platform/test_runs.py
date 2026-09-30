@@ -3,6 +3,7 @@ from pathlib import Path
 
 from instacart_platform.runs import (
     build_run_paths,
+    success_marker_exists,
     write_json,
     write_success_marker,
 )
@@ -60,3 +61,28 @@ def test_write_success_marker_creates_empty_file(tmp_path):
 
     assert path.exists()
     assert path.read_text(encoding="utf-8") == ""
+
+
+def test_success_marker_exists_for_a_local_file(tmp_path):
+    path = tmp_path / "product" / "run-1" / "_SUCCESS"
+
+    assert success_marker_exists(str(path)) is False
+
+    write_success_marker(str(path))
+
+    assert success_marker_exists(str(path)) is True
+
+
+def test_success_marker_exists_checks_gcs_without_a_stale_cache(mocker):
+    filesystem = mocker.Mock()
+    filesystem.exists.return_value = True
+    mocker.patch(
+        "instacart_platform.runs.gcsfs.GCSFileSystem",
+        return_value=filesystem,
+    )
+    path = "gs://bucket/runs/product/run-1/_SUCCESS"
+
+    assert success_marker_exists(path) is True
+
+    filesystem.invalidate_cache.assert_called_once_with(path)
+    filesystem.exists.assert_called_once_with(path)
