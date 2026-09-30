@@ -76,6 +76,7 @@ class RunpodTrainingBackend:
         job: TrainingJob,
     ) -> TrainingJobHandle:
         gpu_types = self._ordered_gpu_types(job.gpu_type)
+        failed_gpu_attempts: list[tuple[str, int, str]] = []
 
         for gpu_type in gpu_types:
             payload = self._build_create_pod_payload(
@@ -117,9 +118,12 @@ class RunpodTrainingBackend:
                     model_name=job.model_name,
                 )
 
-            if self._is_capacity_error(response):
+            if response.status_code == 500:
+                failed_gpu_attempts.append(
+                    (gpu_type, response.status_code, response.text)
+                )
                 logger.warning(
-                    "RunPod has no capacity for GPU %s: %s",
+                    "RunPod pod creation returned HTTP 500 for GPU %s: %s",
                     gpu_type,
                     response.text,
                 )
@@ -134,9 +138,12 @@ class RunpodTrainingBackend:
 
             response.raise_for_status()
 
+        failures = "; ".join(
+            f"{gpu_type} (HTTP {status_code}): {body}"
+            for gpu_type, status_code, body in failed_gpu_attempts
+        )
         raise RuntimeError(
-            "No configured RunPod GPU type currently has capacity. "
-            f"Attempted GPU types: {gpu_types}"
+            f"RunPod pod creation failed for every configured GPU type: {failures}"
         )
 
     def get_status(
@@ -434,38 +441,6 @@ class RunpodTrainingBackend:
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-
-    @staticmethod
-    def _is_capacity_error(response: requests.Response) -> bool:
-        """Return whether a create-pod response means this GPU type is out of stock.
-
-        Runpod REST v1 reports that as HTTP 500 with a string ``error`` field, for
-        example ``create pod: There are no instances currently available``. Any
-        other 500 stays a hard failure.
-        """
-
-        _NO_CAPACITY_MARKERS = (
-            "there are no instances currently available",
-            "there are no longer any instances available",
-        )
-
-        if response.status_code != 500:
-            return False
-
-        try:
-            payload = response.json()
-        except requests.JSONDecodeError:
-            return False
-
-        if not isinstance(payload, dict):
-            return False
-
-        error = payload.get("error")
-        if not isinstance(error, str):
-            return False
-
-        message = error.casefold()
-        return any(marker in message for marker in _NO_CAPACITY_MARKERS)
 
     @staticmethod
     def _ordered_gpu_types(preferred: str) -> tuple[str, ...]:
