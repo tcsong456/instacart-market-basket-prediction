@@ -1,8 +1,10 @@
+import logging
 from dataclasses import asdict
 from datetime import datetime, timezone
 
 from instacart_platform.runs import (
     build_run_paths,
+    success_marker_exists,
     write_json,
     write_success_marker,
 )
@@ -12,6 +14,8 @@ from instacart_rnn.training.runner import (
     run_inference,
     run_training,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def utc_now() -> str:
@@ -32,6 +36,13 @@ def execute_run(
         model_name=training_config.model_name,
         run_id=run_id,
     )
+
+    if success_marker_exists(paths.success_marker):
+        logger.info(
+            "Run %s already completed; refusing to restart training",
+            run_id,
+        )
+        return run_id
 
     started_at = utc_now()
 

@@ -103,3 +103,12 @@ def write_dataclass_json(
 
 def write_success_marker(path: str) -> None:
     _write_text(path, "")
+
+
+def success_marker_exists(path: str) -> bool:
+    if is_gcs_url(path):
+        fs = gcsfs.GCSFileSystem()
+        fs.invalidate_cache(path)
+        return bool(fs.exists(path))
+
+    return os.path.exists(path)
