@@ -1,0 +1,90 @@
+name: Run RNN Single Model Training
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeline:
+        description: "Simulation timeline"
+        required: true
+        type: choice
+        options:
+          - initial
+          - t1
+          - t2
+
+      mode:
+        description: "Use sample or cureated data"
+        required: true
+        type: choice
+        options:
+          - sample
+          - curated
+        
+      model:
+        description: "Trainig model"
+        required: true
+        type: choice
+        options:
+          - product
+          - aisle
+          - reorder_size_gmm
+          - reorder_size_rnn
+      
+      gpu_type:
+        description: "GPU used for training"
+        required: true
+        type: choice
+        options:
+          - NVIDIA L4
+          - NVIDIA RTX A5000
+          - NVIDIA GeForce RTX 4090
+          - NVIDIA A40
+          - NVIDIA L40S
+
+jobs:
+  train:    
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Set image URI
+        run: |
+          echo "TRAINING_IMAGE=europe-west1-docker.pkg.dev/instacart-basket/instacart-basket-prediction/instacart-ml:latest" >> "$GITHUB_ENV"
+      
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.TRAINING_RUNNER_SA }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Submit training
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          python -m instacart_platform.rnn_submit_training_job \
+            --git-commit "${GITHUB_SHA}" \
+            --image "${TRAINING_IMAGE}" \
+            --template-id "${{ vars.RUNPOD_TEMPLATE_ID }}" \
+            --timeline "${{ inputs.timeline }}" \
+            --mode "${{ inputs.mode }}" \
+            --gold-root "${{ vars.GOLD_BUCKET_URI }}" \
+            --runs-root "${{ vars.RUNS_BUCKET_URI }}" \
+            --model-name "${{ inputs.model }}" \
+            --gpu-type "${{ inputs.gpu_type }}"
