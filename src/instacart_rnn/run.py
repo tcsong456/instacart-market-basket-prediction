@@ -110,13 +110,24 @@ def main() -> None:
     configure_logging()
 
     data_root = args.data_root.rstrip("/")
+    base_root, _ = data_root.rsplit("/", 1)
 
     if "reorder_size" in args.model:
         base_path = f"{data_root}/reorder_size_training_data"
-        stacking_path = f"{data_root}/stacking_train/reorder_size_training_data_train"
+        stacking_train_path = (
+            f"{data_root}/stacking_train/reorder_size_training_data_train"
+        )
+        stacking_validation_path = (
+            f"{base_root}/stacking_train/reorder_size_training_data_validation"
+        )
     else:
         base_path = f"{data_root}/{args.model}_training_data"
-        stacking_path = f"{data_root}/stacking_train/{args.model}_training_data_train"
+        stacking_train_path = (
+            f"{data_root}/stacking_train/{args.model}_training_data_train"
+        )
+        stacking_validation_path = (
+            f"{base_root}/stacking_train/{args.model}_training_data_validation"
+        )
 
     train_path = f"{base_path}_train"
     validation_path = f"{base_path}_validation"
@@ -143,7 +154,11 @@ def main() -> None:
     inference_configs = {
         "stacking_train": build_inference_config(
             args=args,
-            input_path=stacking_path,
+            input_path=stacking_train_path,
+        ),
+        "stacking_validation": build_inference_config(
+            args=args,
+            input_path=stacking_validation_path,
         ),
         "evaluation": build_inference_config(
             args=args,
