@@ -138,7 +138,8 @@ def test_select_feature_set_keeps_version_1_when_scores_match():
     ("losses", "expected"),
     [
         ((0.40, 0.399, 0.398), "version_1"),
-        ((0.50, 0.40, 0.39), "version_2"),
+        ((0.50, 0.395, 0.39), "version_2"),
+        ((0.50, 0.40, 0.39), "version_3"),
         ((0.50, 0.42, 0.30), "version_3"),
         ((0.30, 0.30, 0.30), "version_1"),
     ],

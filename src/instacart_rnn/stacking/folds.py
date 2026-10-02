@@ -229,9 +229,18 @@ def main() -> None:
     stdout so a shell script can pass it to feature selection.
     """
 
-    configure_logging()
-    _send_logs_to_stderr()
-    args = parse_args()
+    root_logger = logging.getLogger()
+    previous_handlers = list(root_logger.handlers)
+    previous_level = root_logger.level
+    try:
+        configure_logging()
+        _send_logs_to_stderr()
+        _write_stack(parse_args())
+    finally:
+        _restore_logging(root_logger, previous_handlers, previous_level)
+
+
+def _write_stack(args: argparse.Namespace) -> None:
     artifacts = select_stacking_artifacts(
         runs_root=args.runs_root,
         mode=args.mode,
@@ -270,6 +279,17 @@ def main() -> None:
         output_dir,
     )
     print(output_dir, flush=True)
+
+
+def _restore_logging(
+    root_logger: logging.Logger,
+    previous_handlers: list[logging.Handler],
+    previous_level: int,
+) -> None:
+    root_logger.handlers.clear()
+    for handler in previous_handlers:
+        root_logger.addHandler(handler)
+    root_logger.setLevel(previous_level)
 
 
 def _send_logs_to_stderr() -> None:

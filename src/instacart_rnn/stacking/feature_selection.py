@@ -12,6 +12,7 @@ it is worse than the best out-of-fold log loss by more than
 import argparse
 import json
 import logging
+import math
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
@@ -344,13 +345,20 @@ def choose_version(
         raise ValueError("No feature-set results to choose from")
     best_loss = min(float(item["oof_log_loss"]) for item in results)
     eligible = [
-        item for item in results if float(item["oof_log_loss"]) <= best_loss + tolerance
+        item
+        for item in results
+        if _loss_within_tolerance(float(item["oof_log_loss"]), best_loss, tolerance)
     ]
     winner = min(
         eligible,
         key=lambda item: (int(item["complexity"]), str(item["feature_set"])),
     )
     return str(winner["feature_set"])
+
+
+def _loss_within_tolerance(loss: float, best_loss: float, tolerance: float) -> bool:
+    gap = loss - best_loss
+    return gap <= tolerance or math.isclose(gap, tolerance)
 
 
 def fit_predict_lightgbm(
