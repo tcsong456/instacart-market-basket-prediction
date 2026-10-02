@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -248,7 +249,7 @@ def test_stack_output_dir_rejects_a_blank_stack_id():
         stack_output_dir("gs://runs", "  ")
 
 
-def test_main_writes_the_stack_under_runs_root(tmp_path, monkeypatch):
+def test_main_writes_the_stack_under_runs_root(tmp_path, monkeypatch, capsys):
     for model_name in STACKING_MODELS:
         _write_run(
             tmp_path,
@@ -276,12 +277,22 @@ def test_main_writes_the_stack_under_runs_root(tmp_path, monkeypatch):
         lambda: "20260201T000000Z_abc123",
     )
 
+    root_logger = logging.getLogger()
+    handlers_before = list(root_logger.handlers)
+    level_before = root_logger.level
+
     main()
+
+    assert list(root_logger.handlers) == handlers_before
+    assert root_logger.level == level_before
 
     stack_dir = tmp_path / "stack" / "20260201T000000Z_abc123"
     payload = json.loads((stack_dir / "selected_artifacts.json").read_text())
     folds = pq.read_table(stack_dir / "user_folds.parquet")
+    captured = capsys.readouterr()
 
     assert payload["stack_id"] == "20260201T000000Z_abc123"
     assert set(payload["models"]) == set(STACKING_MODELS)
     assert folds.column("user_id").to_pylist() == [4, 9]
+    assert Path(captured.out.strip()) == stack_dir
+    assert "stack_id=20260201T000000Z_abc123" in captured.err

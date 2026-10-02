@@ -9,6 +9,9 @@ __pycache__/
 #Data
 data/
 
+#txt ignore
+system_ending_criteria.txt
+
 #Ignore zip files
 *.zip
 
