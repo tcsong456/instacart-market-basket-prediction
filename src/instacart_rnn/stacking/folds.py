@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import logging
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -222,9 +223,14 @@ def list_run_ids(runs_root: str, model_name: str) -> list[str]:
 
 
 def main() -> None:
-    """Select artifacts, assign product-user folds, and write both outputs."""
+    """Select artifacts, assign product-user folds, and write both outputs.
+
+    Logs go to stderr. The resolved stack directory is printed alone on
+    stdout so a shell script can pass it to feature selection.
+    """
 
     configure_logging()
+    _send_logs_to_stderr()
     args = parse_args()
     artifacts = select_stacking_artifacts(
         runs_root=args.runs_root,
@@ -257,11 +263,19 @@ def main() -> None:
     )
     write_user_folds(str(join_path(output_dir, "user_folds.parquet")), folds)
     logger.info(
-        "Wrote %d user folds across %d folds to %s",
+        "Wrote stack_id=%s with %d user folds across %d folds to %s",
+        stack_id,
         len(folds),
         args.n_folds,
         output_dir,
     )
+    print(output_dir, flush=True)
+
+
+def _send_logs_to_stderr() -> None:
+    for handler in logging.getLogger().handlers:
+        if getattr(handler, "stream", None) is sys.stdout:
+            handler.setStream(sys.stderr)
 
 
 def _candidate_artifact(
