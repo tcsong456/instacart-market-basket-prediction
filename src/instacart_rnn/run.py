@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--epochs",
         type=int,
-        default=10,
+        default=20,
     )
     parser.add_argument(
         "--train-batch-size",
@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
     )
-    parser.add_argument("--early-stopping", type=int, default=2)
+    parser.add_argument("--early-stopping", type=int, default=3)
     parser.add_argument(
         "--grad-clip-norm",
         type=float,
