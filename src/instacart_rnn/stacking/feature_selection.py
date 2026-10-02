@@ -63,12 +63,7 @@ FoldMatrices = Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]
 def parse_args() -> argparse.Namespace:
     """Parse feature-selection arguments."""
 
-    parser = argparse.ArgumentParser(
-        description=(
-            "Score three stacking GBM feature versions with the existing "
-            "user folds and write the winning version."
-        )
-    )
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--stack-dir",
         required=True,
