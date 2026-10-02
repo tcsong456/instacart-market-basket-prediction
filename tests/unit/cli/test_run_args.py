@@ -25,7 +25,7 @@ def test_parse_args_parses_required_arguments_and_defaults(monkeypatch):
     assert args.data_root == "gs://gold/training/curated/t0"
     assert args.runs_root == "gs://runs"
 
-    assert args.epochs == 10
+    assert args.epochs == 20
     assert args.train_batch_size == 256
     assert args.eval_batch_size == 512
     assert args.read_batch_size == 4096
@@ -36,7 +36,7 @@ def test_parse_args_parses_required_arguments_and_defaults(monkeypatch):
     assert args.weight_decay == pytest.approx(0.0)
     assert args.num_workers == 0
     assert args.seed == 42
-    assert args.early_stopping == 2
+    assert args.early_stopping == 3
     assert args.grad_clip_norm is None
     assert args.git_commit == ""
     assert args.image == ""
