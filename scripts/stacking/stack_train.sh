@@ -14,5 +14,8 @@ stack_dir=$(python -m instacart_rnn.stacking.folds \
   --timeline "$timeline" \
   --n-folds 5)
 
-python -m instacart_rnn.stacking.feature_selection \
+# python -m instacart_rnn.stacking.feature_selection \
+#   --stack-dir "$stack_dir"
+
+python -m instacart_rnn.stacking.stacking_train \
   --stack-dir "$stack_dir"
