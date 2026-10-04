@@ -176,16 +176,20 @@ def test_resolve_stack_directory_selects_the_latest_runs(mocker):
     )
 
 
-def test_resolve_stack_directory_rejects_both_sources():
-    with pytest.raises(ValueError, match="either --stack-dir"):
-        resolve_stack_directory(
-            stack_dir="gs://runs/stack/stack-1",
-            runs_root="gs://runs",
-            mode="curated",
-            timeline="t1",
-            n_folds=5,
-            seed=42,
-        )
+def test_resolve_stack_directory_prefers_an_existing_directory(mocker):
+    write_stack = mocker.patch("instacart_rnn.stacking.stacking_train.write_stack")
+
+    stack_dir = resolve_stack_directory(
+        stack_dir="gs://runs/stack/stack-1/",
+        runs_root="gs://runs",
+        mode="curated",
+        timeline="t1",
+        n_folds=5,
+        seed=42,
+    )
+
+    assert stack_dir == "gs://runs/stack/stack-1"
+    write_stack.assert_not_called()
 
 
 def test_resolve_backend_run_requires_all_three_arguments():
