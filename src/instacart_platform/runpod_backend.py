@@ -22,6 +22,7 @@ RUNPOD_API_URL = "https://rest.runpod.io/v1"
 # v2 GET includes lifecycle status and runtime; v1 GET does not.
 RUNPOD_V2_API_URL = "https://api.runpod.io/v2"
 _POD_DEAD_STATUSES = frozenset({"EXITED", "ERROR", "TERMINATED"})
+_CPU_FLAVORS = frozenset({"cpu3c", "cpu3g", "cpu3m", "cpu5c", "cpu5g", "cpu5m"})
 
 
 class RunpodTrainingBackend:
@@ -75,6 +76,13 @@ class RunpodTrainingBackend:
         self,
         job: TrainingJob,
     ) -> TrainingJobHandle:
+        if job.compute_type == "CPU":
+            return self._submit_cpu_pod(job)
+        if job.compute_type != "GPU":
+            raise ValueError(
+                f"compute_type must be GPU or CPU, received {job.compute_type!r}"
+            )
+
         gpu_types = self._ordered_gpu_types(job.gpu_type)
         failed_gpu_attempts: list[tuple[str, int, str]] = []
 
@@ -463,6 +471,53 @@ class RunpodTrainingBackend:
             *(gpu for gpu in SUPPORTED_GPU_TYPES if gpu != preferred),
         )
 
+    def _submit_cpu_pod(self, job: TrainingJob) -> TrainingJobHandle:
+        if not job.cpu_flavor_ids:
+            raise ValueError("A CPU pod requires at least one cpu_flavor_id")
+        unknown = [
+            flavor for flavor in job.cpu_flavor_ids if flavor not in _CPU_FLAVORS
+        ]
+        if unknown:
+            raise ValueError(
+                f"Unsupported CPU flavor: {unknown[0]!r}. "
+                f"Supported CPU flavors: {tuple(sorted(_CPU_FLAVORS))}"
+            )
+        if job.vcpu_count < 1:
+            raise ValueError("vcpu_count must be >= 1")
+
+        payload = self._build_cpu_pod_payload(job)
+        logger.info(
+            "Attempting RunPod CPU pod creation with flavors %s and %d vCPUs",
+            list(job.cpu_flavor_ids),
+            job.vcpu_count,
+        )
+        response = requests.post(
+            f"{RUNPOD_API_URL}/pods",
+            headers=self._headers(),
+            json=payload,
+            timeout=self._timeout_seconds,
+        )
+        if not response.ok:
+            logger.error(
+                "RunPod CPU pod creation failed: status=%s body=%s",
+                response.status_code,
+                response.text,
+            )
+            response.raise_for_status()
+
+        pod_id = response.json().get("id")
+        if not isinstance(pod_id, str) or not pod_id:
+            raise RuntimeError(
+                "RunPod create Pod response did not contain a valid Pod ID"
+            )
+        logger.info("RunPod created CPU pod %s", pod_id)
+        return TrainingJobHandle(
+            job_id=pod_id,
+            run_id=job.run_id,
+            runs_root=job.runs_root,
+            model_name=job.model_name,
+        )
+
     def _build_create_pod_payload(
         self, job: TrainingJob, gpu_type: str
     ) -> dict[str, Any]:
@@ -471,6 +526,18 @@ class RunpodTrainingBackend:
             "imageName": job.image,
             "gpuTypeIds": [gpu_type],
             "gpuCount": job.gpu_count,
+            "templateId": self._template_id,
+            "dockerStartCmd": job.command,
+        }
+
+    def _build_cpu_pod_payload(self, job: TrainingJob) -> dict[str, Any]:
+        return {
+            "name": f"instacart-{job.model_name}-{job.run_id}",
+            "imageName": job.image,
+            "computeType": "CPU",
+            "cpuFlavorIds": list(job.cpu_flavor_ids),
+            "cpuFlavorPriority": "availability",
+            "vcpuCount": job.vcpu_count,
             "templateId": self._template_id,
             "dockerStartCmd": job.command,
         }

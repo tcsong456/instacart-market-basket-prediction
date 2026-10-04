@@ -29,6 +29,9 @@ class TrainingJob:
     runs_root: str
     model_name: str
     gpu_count: int = 1
+    compute_type: str = "GPU"
+    cpu_flavor_ids: tuple[str, ...] = ()
+    vcpu_count: int = 2
 
 
 @dataclass(frozen=True)

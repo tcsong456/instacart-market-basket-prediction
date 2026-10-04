@@ -73,16 +73,6 @@ def generate_stack_id() -> str:
 
 
 def stack_output_dir(runs_root: str, stack_id: str) -> str:
-    """Return the immutable directory for one stack candidate.
-
-    Args:
-        runs_root: Root that contains one directory per model.
-        stack_id: Id of the stack candidate being written.
-
-    Returns:
-        ``{runs_root}/stack/{stack_id}``.
-    """
-
     if not stack_id.strip():
         raise ValueError("stack_id must not be empty")
 
@@ -240,11 +230,31 @@ def main() -> None:
         _restore_logging(root_logger, previous_handlers, previous_level)
 
 
-def _write_stack(args: argparse.Namespace) -> None:
+def write_stack(
+    *,
+    runs_root: str,
+    mode: str,
+    timeline: str,
+    n_folds: int,
+    seed: int,
+) -> str:
+    """Select artifacts, write user folds, and return the new stack directory.
+
+    Args:
+        runs_root: Root that contains one directory per model.
+        mode: Gold dataset mode, such as ``sample`` or ``curated``.
+        timeline: Gold timeline, such as ``t1``.
+        n_folds: Number of user folds to assign.
+        seed: Salt for the fold assignment.
+
+    Returns:
+        ``{runs_root}/stack/{stack_id}``.
+    """
+
     artifacts = select_stacking_artifacts(
-        runs_root=args.runs_root,
-        mode=args.mode,
-        timeline=args.timeline,
+        runs_root=runs_root,
+        mode=mode,
+        timeline=timeline,
     )
     for artifact in artifacts.values():
         logger.info(
@@ -256,17 +266,17 @@ def _write_stack(args: argparse.Namespace) -> None:
         )
 
     user_ids = read_user_ids(artifacts["product"].artifact_path)
-    folds = assign_user_folds(user_ids, n_folds=args.n_folds, seed=args.seed)
+    folds = assign_user_folds(user_ids, n_folds=n_folds, seed=seed)
     stack_id = generate_stack_id()
-    output_dir = stack_output_dir(args.runs_root, stack_id)
+    output_dir = stack_output_dir(runs_root, stack_id)
     write_json(
         str(join_path(output_dir, "selected_artifacts.json")),
         {
             "stack_id": stack_id,
-            "mode": args.mode,
-            "timeline": args.timeline,
-            "n_folds": args.n_folds,
-            "seed": args.seed,
+            "mode": mode,
+            "timeline": timeline,
+            "n_folds": n_folds,
+            "seed": seed,
             "models": {name: asdict(artifact) for name, artifact in artifacts.items()},
         },
     )
@@ -275,8 +285,19 @@ def _write_stack(args: argparse.Namespace) -> None:
         "Wrote stack_id=%s with %d user folds across %d folds to %s",
         stack_id,
         len(folds),
-        args.n_folds,
+        n_folds,
         output_dir,
+    )
+    return output_dir
+
+
+def _write_stack(args: argparse.Namespace) -> None:
+    output_dir = write_stack(
+        runs_root=args.runs_root,
+        mode=args.mode,
+        timeline=args.timeline,
+        n_folds=args.n_folds,
+        seed=args.seed,
     )
     print(output_dir, flush=True)
 

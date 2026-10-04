@@ -211,6 +211,45 @@ def test_submit_posts_official_create_pod_schema(mocker):
     )
 
 
+def test_submit_posts_a_cpu_pod_without_a_gpu(mocker):
+    post = _mock_create_pod_response(mocker, {"id": "pod-cpu"})
+    job = _training_job(
+        model_name="stacking_gbm",
+        gpu_type="",
+        gpu_count=0,
+        compute_type="CPU",
+        cpu_flavor_ids=("cpu3m", "cpu5m"),
+        vcpu_count=4,
+    )
+
+    handle = _backend().submit(job)
+    payload = post.call_args.kwargs["json"]
+
+    assert handle.job_id == "pod-cpu"
+    assert payload["computeType"] == "CPU"
+    assert payload["cpuFlavorIds"] == ["cpu3m", "cpu5m"]
+    assert payload["cpuFlavorPriority"] == "availability"
+    assert payload["vcpuCount"] == 4
+    assert "gpuTypeIds" not in payload
+    assert "gpuCount" not in payload
+    assert post.call_count == 1
+
+
+def test_submit_rejects_an_unknown_cpu_flavor(mocker):
+    post = mocker.patch("instacart_platform.runpod_backend.requests.post")
+
+    with pytest.raises(ValueError, match="Unsupported CPU flavor"):
+        _backend().submit(
+            _training_job(
+                compute_type="CPU",
+                cpu_flavor_ids=("cpu9x",),
+                vcpu_count=2,
+            )
+        )
+
+    post.assert_not_called()
+
+
 def test_submit_sends_requested_gpu_count(mocker):
     post = _mock_create_pod_response(mocker, {"id": "pod-123"})
     job = _training_job(gpu_count=2)

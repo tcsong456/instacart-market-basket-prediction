@@ -35,7 +35,7 @@ COPY --chown=root:root pyproject.toml README.md /app/
 COPY --chown=root:root src/ /app/src/
 
 RUN python -m pip install --upgrade "pip<27" \
-    && python -m pip install .
+    && python -m pip install ".[stacking]"
 
 COPY --chown=root:root docker/training/entrypoint.sh \
     /usr/local/bin/training-entrypoint
