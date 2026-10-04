@@ -5,6 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
+#unwanted folders
+stacking_gbm_hpt/
 
 #Data
 data/

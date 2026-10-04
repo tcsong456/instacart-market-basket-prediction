@@ -452,28 +452,41 @@ def main() -> None:
     logger.info("Selected feature set %s", winner)
 
 
-def _load_frame(manifest: dict, stack_dir: str, label_path: str) -> pd.DataFrame:
-    models = manifest["models"]
+def read_stacking_outputs(
+    artifact_paths: Mapping[str, str],
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Read product, aisle, reorder-RNN, and reorder-GMM inference frames.
+
+    Args:
+        artifact_paths: Inference directory for each required model.
+
+    Returns:
+        Product, aisle, reorder-RNN, and reorder-GMM frames.
+    """
+
+    missing = [name for name in REQUIRED_MODELS if name not in artifact_paths]
+    if missing:
+        raise ValueError(f"Artifact paths are missing {', '.join(missing)}")
     product = read_model_frame(
-        models["product"]["artifact_path"],
+        artifact_paths["product"],
         ("user_id", "product_id", "aisle_id"),
         {"final_logits": "product_logit"},
         {"final_states": "product_state_"},
     )
     aisle = read_model_frame(
-        models["aisle"]["artifact_path"],
+        artifact_paths["aisle"],
         ("user_id", "aisle_id"),
         {"final_logits": "aisle_logit"},
         {"final_states": "aisle_state_"},
     )
     reorder = read_model_frame(
-        models["reorder_size_rnn"]["artifact_path"],
+        artifact_paths["reorder_size_rnn"],
         ("user_id",),
         {"final_predictions": "reorder_prediction"},
         {"final_states": "reorder_state_"},
     )
     gmm = read_model_frame(
-        models["reorder_size_gmm"]["artifact_path"],
+        artifact_paths["reorder_size_gmm"],
         ("user_id",),
         {
             "nll_0": "gmm_nll_0",
@@ -486,6 +499,14 @@ def _load_frame(manifest: dict, stack_dir: str, label_path: str) -> pd.DataFrame
             "candidate_nlls": "gmm_candidate_nll_",
             "final_states": "gmm_state_",
         },
+    )
+    return product, aisle, reorder, gmm
+
+
+def _load_frame(manifest: dict, stack_dir: str, label_path: str) -> pd.DataFrame:
+    models = manifest["models"]
+    product, aisle, reorder, gmm = read_stacking_outputs(
+        {name: models[name]["artifact_path"] for name in REQUIRED_MODELS}
     )
     labels = _read_frame(label_path, list(LABEL_COLUMNS))
     folds = _read_frame(
