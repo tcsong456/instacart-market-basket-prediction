@@ -1,14 +1,3 @@
-"""Choose a stacking GBM feature version with user-level out-of-fold scores.
-
-Version 1 uses compact model outputs: product and aisle logits, the
-reorder-size RNN prediction, and the reorder-size GMM summaries plus
-candidate NLLs. Version 2 adds a PCA of each model's hidden state, fit on
-the training fold only and capped at 15 components or 90% of variance.
-Version 3 adds the raw hidden states. The smallest version is kept unless
-it is worse than the best out-of-fold log loss by more than
-``LOSS_TOLERANCE``.
-"""
-
 import argparse
 import json
 import logging
@@ -61,21 +50,13 @@ FoldMatrices = Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse feature-selection arguments."""
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--stack-dir",
         required=True,
         help="Directory containing selected_artifacts.json and user_folds.parquet.",
     )
-    parser.add_argument(
-        "--label-path",
-        help=(
-            "Product stacking-train gold parquet. Defaults to the timeline "
-            "stacking_train file derived from the selected product run."
-        ),
-    )
+    parser.add_argument("--label-path")
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
