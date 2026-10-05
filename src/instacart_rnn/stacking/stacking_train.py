@@ -149,7 +149,6 @@ def sibling_artifact_path(artifact_path: str, split: str) -> str:
     if not split or "/" in split:
         raise ValueError(f"split must be a single directory name, received {split!r}")
 
-    if is_gcs_url(artifact_path):
         normalized = artifact_path.rstrip("/")
         suffix = "/stacking_train"
         if not normalized.endswith(suffix):
@@ -157,6 +156,7 @@ def sibling_artifact_path(artifact_path: str, split: str) -> str:
                 f"artifact_path must end with /stacking_train, received {artifact_path}"
             )
         return normalized[: -len(suffix)] + f"/{split}"
+
 
     path = Path(artifact_path)
     if path.name != "stacking_train":
