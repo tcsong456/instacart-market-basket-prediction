@@ -157,7 +157,6 @@ def sibling_artifact_path(artifact_path: str, split: str) -> str:
             )
         return normalized[: -len(suffix)] + f"/{split}"
 
-
     path = Path(artifact_path)
     if path.name != "stacking_train":
         raise ValueError(
