@@ -8,6 +8,8 @@ from pathlib import Path
 import gcsfs
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from instacart_etl_rnn.common.paths import is_gcs_url, join_path
 from instacart_etl_rnn.common.setup_logging import configure_logging
@@ -65,6 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-folds", type=int, default=5)
     parser.add_argument("--label-path")
     parser.add_argument("--evaluation-label-path")
+    parser.add_argument("--stacking-validation-label-path")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--runs-root")
     parser.add_argument("--model")
@@ -132,15 +135,19 @@ def evaluation_label_path(base_train_path: str) -> str:
     return f"{parent}/{stem}_evaluation"
 
 
-def evaluation_artifact_path(artifact_path: str) -> str:
-    """Return the evaluation export beside a stacking-train export.
+def sibling_artifact_path(artifact_path: str, split: str) -> str:
+    """Return another inference export beside a stacking-train export.
 
     Args:
         artifact_path: Directory ending in ``stacking_train``.
+        split: Sibling directory name, such as ``evaluation``.
 
     Returns:
-        The sibling ``evaluation`` directory.
+        The sibling split directory.
     """
+
+    if not split or "/" in split:
+        raise ValueError(f"split must be a single directory name, received {split!r}")
 
     if is_gcs_url(artifact_path):
         normalized = artifact_path.rstrip("/")
@@ -149,14 +156,44 @@ def evaluation_artifact_path(artifact_path: str) -> str:
             raise ValueError(
                 f"artifact_path must end with /stacking_train, received {artifact_path}"
             )
-        return normalized[: -len(suffix)] + "/evaluation"
+        return normalized[: -len(suffix)] + f"/{split}"
 
     path = Path(artifact_path)
     if path.name != "stacking_train":
         raise ValueError(
             f"artifact_path must end with stacking_train, received {artifact_path}"
         )
-    return str(path.parent / "evaluation")
+    return str(path.parent / split)
+
+
+def evaluation_artifact_path(artifact_path: str) -> str:
+    return sibling_artifact_path(artifact_path, "evaluation")
+
+
+def stacking_validation_artifact_path(artifact_path: str) -> str:
+    return sibling_artifact_path(artifact_path, "stacking_validation")
+
+
+def stacking_validation_label_path(base_train_path: str) -> str:
+    timeline_dir, filename = base_train_path.rstrip("/").rsplit("/", 1)
+    suffix = "_training_data_train"
+    if not filename.endswith(suffix):
+        raise ValueError(
+            f"train_path must end with {suffix}, received {base_train_path}"
+        )
+    mode_dir, _timeline = timeline_dir.rsplit("/", 1)
+    stem = filename[: -len("_train")]
+    return f"{mode_dir}/stacking_train/{stem}_validation"
+
+
+def prediction_directory(
+    *,
+    paths: RunPaths | None,
+    stack_dir: str,
+    split: str,
+) -> str:
+    root = paths.artifacts if paths is not None else join_path(stack_dir, "artifacts")
+    return str(join_path(root, split))
 
 
 def searched_feature_columns(frame: pd.DataFrame) -> list[str]:
@@ -423,6 +460,79 @@ def mean_order_f1(frame: pd.DataFrame, probabilities: np.ndarray) -> float:
     return float(np.round(float(np.mean(scores)), 5))
 
 
+def score_labeled_frame(booster, frame: pd.DataFrame, columns: Sequence[str]) -> dict:
+    """Score one labeled feature frame with a fitted GBM.
+
+    Args:
+        booster: Fitted booster with ``predict``.
+        frame: Joined product rows containing ``columns`` and ``label``.
+        columns: Feature columns in the booster's training order.
+
+    Returns:
+        Probabilities aligned to ``frame``, plus log loss, basket F1, and counts.
+    """
+
+    missing = [column for column in columns if column not in frame.columns]
+    if missing:
+        raise ValueError(f"Features are missing {missing}")
+    probabilities = np.asarray(
+        booster.predict(frame.loc[:, list(columns)].to_numpy(dtype=np.float64)),
+        dtype=np.float64,
+    )
+    return {
+        "probabilities": probabilities,
+        "log_loss": binary_log_loss(
+            frame["label"].to_numpy(dtype=np.float64),
+            probabilities,
+        ),
+        "f1": mean_order_f1(frame, probabilities),
+        "n_rows": int(len(frame)),
+        "n_users": int(frame["user_id"].nunique()),
+    }
+
+
+def write_predictions(
+    output_dir: str,
+    frame: pd.DataFrame,
+    probabilities: np.ndarray,
+) -> str:
+    """Write GBM scores as ``predictions.parquet``.
+
+    Evaluation users and stacking N use the same columns: ``user_id``,
+    ``product_id``, ``label``, and ``probability``.
+
+    Args:
+        output_dir: Split directory, such as ``artifacts/evaluation``.
+        frame: Scored rows containing ``user_id``, ``product_id``, and ``label``.
+        probabilities: One reorder probability per row of ``frame``.
+
+    Returns:
+        Path of the written Parquet file.
+    """
+
+    if len(probabilities) != len(frame):
+        raise ValueError("probabilities must have one value per frame row")
+    path = str(join_path(output_dir, "predictions.parquet"))
+    table = pa.table(
+        {
+            "user_id": pa.array(frame["user_id"].to_numpy(), type=pa.int64()),
+            "product_id": pa.array(frame["product_id"].to_numpy(), type=pa.int64()),
+            "label": pa.array(frame["label"].to_numpy(), type=pa.float64()),
+            "probability": pa.array(
+                np.asarray(probabilities, dtype=np.float64),
+                type=pa.float64(),
+            ),
+        }
+    )
+    sink = _open_binary(path)
+    try:
+        pq.write_table(table, sink)
+    finally:
+        if hasattr(sink, "close"):
+            sink.close()
+    return path
+
+
 def utc_now() -> str:
     """Return the current UTC time as an ISO-8601 string."""
 
@@ -512,6 +622,12 @@ def execute_backend_run(
         {
             "evaluation_log_loss": result["evaluation_log_loss"],
             "evaluation_f1": result["evaluation_f1"],
+            "evaluation_predictions_path": result["evaluation_predictions_path"],
+            "stacking_validation_log_loss": result["stacking_validation_log_loss"],
+            "stacking_validation_f1": result["stacking_validation_f1"],
+            "stacking_validation_predictions_path": result[
+                "stacking_validation_predictions_path"
+            ],
             "model_path": result["model_path"],
         },
     )
@@ -556,6 +672,10 @@ def main() -> None:
         evaluation_labels = args.evaluation_label_path or evaluation_label_path(
             product_train_path
         )
+        stacking_validation_labels = (
+            args.stacking_validation_label_path
+            or stacking_validation_label_path(product_train_path)
+        )
         train_frame = load_training_frame(manifest, stack_dir, train_label_path)
         columns = searched_feature_columns(train_frame)
         booster = train_booster(
@@ -567,30 +687,41 @@ def main() -> None:
             feature_names=columns,
         )
 
-        evaluation_frame = _load_evaluation_frame(manifest, evaluation_labels)
+        evaluation_frame = _load_split_frame(manifest, evaluation_labels, "evaluation")
         _require_disjoint_users(train_frame, evaluation_frame)
-        missing = [
-            column for column in columns if column not in evaluation_frame.columns
-        ]
-        if missing:
-            raise ValueError(f"Evaluation features are missing {missing}")
-        probabilities = np.asarray(
-            booster.predict(
-                evaluation_frame.loc[:, columns].to_numpy(dtype=np.float64)
-            ),
-            dtype=np.float64,
+        evaluation_score = score_labeled_frame(booster, evaluation_frame, columns)
+        stacking_frame = _load_split_frame(
+            manifest,
+            stacking_validation_labels,
+            "stacking_validation",
         )
-        log_loss = binary_log_loss(
-            evaluation_frame["label"].to_numpy(dtype=np.float64),
-            probabilities,
-        )
-        order_f1 = mean_order_f1(evaluation_frame, probabilities)
+        _require_disjoint_users(evaluation_frame, stacking_frame)
+        stacking_score = score_labeled_frame(booster, stacking_frame, columns)
         model_path = str(join_path(stack_dir, "model.txt"))
         save_booster(booster, model_path)
+        evaluation_predictions = write_predictions(
+            prediction_directory(
+                paths=paths,
+                stack_dir=stack_dir,
+                split="evaluation",
+            ),
+            evaluation_frame,
+            evaluation_score["probabilities"],
+        )
+        stacking_predictions = write_predictions(
+            prediction_directory(
+                paths=paths,
+                stack_dir=stack_dir,
+                split="stacking_validation",
+            ),
+            stacking_frame,
+            stacking_score["probabilities"],
+        )
         result = {
             "stack_dir": stack_dir,
             "train_label_path": train_label_path,
             "evaluation_label_path": evaluation_labels,
+            "stacking_validation_label_path": stacking_validation_labels,
             "parameters": GBM_PARAMETERS,
             "num_boost_round": NUM_BOOST_ROUND,
             "seed": args.seed,
@@ -604,17 +735,29 @@ def main() -> None:
             "n_features": len(columns),
             "n_train_rows": int(len(train_frame)),
             "n_train_users": int(train_frame["user_id"].nunique()),
-            "n_evaluation_rows": int(len(evaluation_frame)),
-            "n_evaluation_users": int(evaluation_frame["user_id"].nunique()),
-            "evaluation_log_loss": log_loss,
-            "evaluation_f1": order_f1,
+            "n_evaluation_rows": evaluation_score["n_rows"],
+            "n_evaluation_users": evaluation_score["n_users"],
+            "evaluation_log_loss": evaluation_score["log_loss"],
+            "evaluation_f1": evaluation_score["f1"],
+            "evaluation_predictions_path": evaluation_predictions,
+            "n_stacking_validation_rows": stacking_score["n_rows"],
+            "n_stacking_validation_users": stacking_score["n_users"],
+            "stacking_validation_log_loss": stacking_score["log_loss"],
+            "stacking_validation_f1": stacking_score["f1"],
+            "stacking_validation_predictions_path": stacking_predictions,
         }
         write_json(str(join_path(stack_dir, "stacking_train.json")), result)
         logger.info(
-            "Evaluation users %d log loss %.5f basket F1 %.5f model %s",
+            "Evaluation users %d log loss %.5f basket F1 %.5f",
             result["n_evaluation_users"],
-            log_loss,
-            order_f1,
+            evaluation_score["log_loss"],
+            evaluation_score["f1"],
+        )
+        logger.info(
+            "Stacking N users %d log loss %.5f basket F1 %.5f model %s",
+            result["n_stacking_validation_users"],
+            stacking_score["log_loss"],
+            stacking_score["f1"],
             model_path,
         )
         return result
@@ -632,9 +775,12 @@ def main() -> None:
     )
 
 
-def _load_evaluation_frame(manifest: dict, label_path: str) -> pd.DataFrame:
+def _load_split_frame(manifest: dict, label_path: str, split: str) -> pd.DataFrame:
     artifact_paths = {
-        name: evaluation_artifact_path(manifest["models"][name]["artifact_path"])
+        name: sibling_artifact_path(
+            manifest["models"][name]["artifact_path"],
+            split,
+        )
         for name in REQUIRED_MODELS
     }
     product, aisle, reorder, gmm = read_stacking_outputs(artifact_paths)
@@ -646,6 +792,15 @@ def _load_evaluation_frame(manifest: dict, label_path: str) -> pd.DataFrame:
         gmm=gmm,
         labels=labels,
     )
+
+
+def _open_binary(path: str):
+    if is_gcs_url(path):
+        return gcsfs.GCSFileSystem().open(path, "wb")
+
+    parent = Path(path).parent
+    parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _require_disjoint_users(train_frame: pd.DataFrame, evaluation_frame: pd.DataFrame):
