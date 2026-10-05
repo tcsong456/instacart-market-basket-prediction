@@ -2,6 +2,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 
 from instacart_rnn.stacking.stacking_train import (
@@ -14,11 +15,16 @@ from instacart_rnn.stacking.stacking_train import (
     join_labeled_features,
     mean_order_f1,
     predicted_basket,
+    prediction_directory,
     resolve_backend_run,
     resolve_stack_directory,
     save_booster,
+    score_labeled_frame,
+    stacking_validation_artifact_path,
+    stacking_validation_label_path,
     train_booster,
     true_basket,
+    write_predictions,
 )
 from instacart_rnn.stacking.stacking_train import (
     _require_disjoint_users as require_disjoint_users,
@@ -44,6 +50,53 @@ def test_evaluation_artifact_path_switches_the_split_directory():
     path = evaluation_artifact_path("gs://runs/product/run-1/artifacts/stacking_train")
 
     assert path == "gs://runs/product/run-1/artifacts/evaluation"
+
+
+def test_stacking_validation_artifact_path_switches_the_split_directory():
+    path = stacking_validation_artifact_path(
+        "gs://runs/product/run-1/artifacts/stacking_train"
+    )
+
+    assert path == "gs://runs/product/run-1/artifacts/stacking_validation"
+
+
+def test_stacking_validation_label_path_uses_the_shared_snapshot():
+    path = stacking_validation_label_path(
+        "gs://gold/training/sample/t1/product_training_data_train"
+    )
+
+    assert path == (
+        "gs://gold/training/sample/stacking_train/product_training_data_validation"
+    )
+
+
+def test_stacking_validation_label_path_rejects_a_non_train_file():
+    with pytest.raises(ValueError, match="_training_data_train"):
+        stacking_validation_label_path(
+            "gs://gold/training/sample/t1/product_training_data_validation"
+        )
+
+
+def test_prediction_directory_uses_the_run_artifacts_for_both_splits(tmp_path):
+    paths = resolve_backend_run(str(tmp_path), "stacking_gbm", "run-1")
+
+    evaluation = prediction_directory(
+        paths=paths,
+        stack_dir=str(tmp_path / "stack" / "stack-1"),
+        split="evaluation",
+    )
+    stacking_n = prediction_directory(
+        paths=paths,
+        stack_dir=str(tmp_path / "stack" / "stack-1"),
+        split="stacking_validation",
+    )
+
+    assert evaluation == str(
+        tmp_path / "stacking_gbm" / "run-1" / "artifacts" / "evaluation"
+    )
+    assert stacking_n == str(
+        tmp_path / "stacking_gbm" / "run-1" / "artifacts" / "stacking_validation"
+    )
 
 
 def test_evaluation_artifact_path_rejects_a_different_split():
@@ -220,6 +273,15 @@ def test_execute_backend_run_writes_completed_status_and_success_marker(
         work=lambda: {
             "evaluation_log_loss": 0.24,
             "evaluation_f1": 0.37,
+            "evaluation_predictions_path": (
+                "gs://runs/stacking_gbm/run-1/artifacts/evaluation/predictions.parquet"
+            ),
+            "stacking_validation_log_loss": 0.31,
+            "stacking_validation_f1": 0.28,
+            "stacking_validation_predictions_path": (
+                "gs://runs/stacking_gbm/run-1/artifacts/"
+                "stacking_validation/predictions.parquet"
+            ),
             "model_path": "gs://runs/stack/stack-1/model.txt",
         },
     )
@@ -229,6 +291,7 @@ def test_execute_backend_run_writes_completed_status_and_success_marker(
     metrics = json.loads((run_root / "metrics.json").read_text(encoding="utf-8"))
 
     assert result["evaluation_f1"] == 0.37
+    assert metrics["stacking_validation_f1"] == 0.28
     assert run_payload["status"] == "completed"
     assert run_payload["started_at"] == "2026-01-01T00:00:00+00:00"
     assert run_payload["completed_at"] == "2026-01-01T01:00:00+00:00"
@@ -349,6 +412,44 @@ def test_disjoint_users_rejects_an_evaluation_user_seen_in_training():
 
     with pytest.raises(ValueError, match="overlap contains 1"):
         require_disjoint_users(train, evaluation)
+
+
+def test_score_labeled_frame_returns_probabilities_and_basket_f1():
+    frame = pd.DataFrame(
+        {
+            "user_id": [1, 1],
+            "product_id": [10, 11],
+            "label": [1.0, 0.0],
+            "product_logit": [0.2, 0.1],
+        }
+    )
+
+    class _Booster:
+        def predict(self, rows):
+            return np.array([0.95, 0.05])
+
+    scored = score_labeled_frame(_Booster(), frame, ["product_logit"])
+
+    assert list(scored["probabilities"]) == [0.95, 0.05]
+    assert scored["n_users"] == 1
+    assert scored["f1"] == 1.0
+
+
+def test_write_predictions_uses_the_evaluation_columns(tmp_path):
+    frame = pd.DataFrame(
+        {
+            "user_id": [7, 7],
+            "product_id": [10, 11],
+            "label": [1.0, 0.0],
+        }
+    )
+
+    path = write_predictions(str(tmp_path / "evaluation"), frame, np.array([0.8, 0.2]))
+    table = pq.read_table(path)
+
+    assert path == str(tmp_path / "evaluation" / "predictions.parquet")
+    assert table.column_names == ["user_id", "product_id", "label", "probability"]
+    assert table.column("probability").to_pylist() == [0.8, 0.2]
 
 
 def test_join_labeled_features_keeps_labeled_product_rows():
