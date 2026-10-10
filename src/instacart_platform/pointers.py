@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -18,6 +19,10 @@ from instacart_rnn.stacking.feature_selection import (
 from instacart_rnn.stacking.folds import stack_output_dir
 
 POINTER_ROLES = ("champion", "challenger")
+
+
+class PointerConflictError(RuntimeError):
+    """The champion pointer changed during the compare-and-publish section."""
 
 
 @dataclass(frozen=True)
@@ -50,60 +55,65 @@ class ResolvedPointer:
 def pointer_path(
     runs_root: str,
     mode: str,
-    timeline: str,
     role: str,
+    timeline: str | None = None,
 ) -> str:
-    """Return the JSON path for one role, mode, and timeline.
+    """Return the JSON path for one pointer.
+
+    The champion is one pointer for the mode. A challenger stays on the
+    timeline whose stack was just trained.
 
     Args:
         runs_root: Root that contains ``pointers`` and ``stack``.
         mode: Gold dataset mode, such as ``sample`` or ``curated``.
-        timeline: Gold timeline, such as ``t1``.
         role: ``champion`` or ``challenger``.
+        timeline: Gold timeline, such as ``t1``. Required for a challenger.
 
     Returns:
-        ``{runs_root}/pointers/{mode}/{timeline}/{role}.json``.
+        ``{runs_root}/pointers/{mode}/champion.json``, or
+        ``{runs_root}/pointers/{mode}/{timeline}/challenger.json``.
     """
 
     _require_role(role)
     _require_segment(mode, "mode")
+    mode_dir = join_path(join_path(runs_root.rstrip("/"), "pointers"), mode)
+    if role == "champion":
+        return str(join_path(mode_dir, "champion.json"))
+    if timeline is None:
+        raise ValueError("timeline is required for a challenger pointer")
     _require_segment(timeline, "timeline")
-    return str(
-        join_path(
-            join_path(
-                join_path(join_path(runs_root.rstrip("/"), "pointers"), mode),
-                timeline,
-            ),
-            f"{role}.json",
-        )
-    )
+    return str(join_path(join_path(mode_dir, timeline), f"{role}.json"))
 
 
 def resolve_pointer(
     *,
     runs_root: str,
     mode: str,
-    timeline: str,
     role: str,
+    timeline: str | None = None,
 ) -> ResolvedPointer:
     """Return the stack and base runs named by one pointer.
 
     A missing pointer raises ``FileNotFoundError``. The latest completed run
-    is never substituted for the run id stored in the pointer.
+    is never substituted for the run id stored in the pointer. The champion
+    lookup is the mode pointer; its timeline is the timeline that stack was
+    trained on.
 
     Args:
         runs_root: Root that contains ``pointers`` and ``stack``.
         mode: Gold dataset mode requested by the caller.
-        timeline: Gold timeline requested by the caller.
         role: ``champion`` or ``challenger``.
+        timeline: Gold timeline requested for a challenger.
 
     Returns:
         The resolved pointer, including each model's artifact directory and
         ``best.pt`` path.
     """
 
-    path = pointer_path(runs_root, mode, timeline, role)
+    path = pointer_path(runs_root, mode, role, timeline)
     payload = _read_json(path)
+    if role == "champion":
+        timeline = _require_segment(payload.get("timeline"), "timeline")
     return _resolve_payload(
         runs_root=runs_root,
         path=path,
@@ -139,15 +149,94 @@ def publish_pointer(
     _require_role(role)
     record = _load_stack_record(stack_dir)
     _require_completed_models(runs_root, record.run_ids)
-    path = pointer_path(runs_root, record.mode, record.timeline, role)
-    payload = {
+    path = pointer_path(runs_root, record.mode, role, record.timeline)
+    payload = _pointer_payload(
+        record,
+        role=role,
+        runs_root=runs_root,
+        previous_stack_id=_previous_stack_id(path),
+    )
+    write_json(path, payload)
+    return resolve_pointer(
+        runs_root=runs_root,
+        mode=record.mode,
+        role=role,
+        timeline=None if role == "champion" else record.timeline,
+    )
+
+
+def pointer_generation(path: str) -> int | None:
+    """Return the current pointer generation.
+
+    Args:
+        path: Pointer JSON path returned by :func:`pointer_path`.
+
+    Returns:
+        ``None`` when the file is absent. Otherwise the GCS object generation
+        or the local modification token.
+    """
+
+    if is_gcs_url(path):
+        return _gcs_generation(path)
+    if not os.path.exists(path):
+        return None
+    return os.stat(path).st_mtime_ns
+
+
+def publish_champion_if_current(
+    *,
+    runs_root: str,
+    stack_dir: str,
+    expected_generation: int | None,
+    previous_stack_id: str | None,
+) -> ResolvedPointer:
+    """Publish ``champion.json`` only when its generation is still current.
+
+    ``expected_generation=None`` creates the file only if it is still absent.
+    A changed or newly created pointer raises :class:`PointerConflictError`.
+
+    Args:
+        runs_root: Root that contains ``pointers`` and the completed runs.
+        stack_dir: Directory that holds the stack manifest and ``model.txt``.
+        expected_generation: Generation observed before the comparison.
+        previous_stack_id: Champion stack id at that generation, if one existed.
+
+    Returns:
+        The champion pointer after it has been read back.
+    """
+
+    record = _load_stack_record(stack_dir)
+    _require_completed_models(runs_root, record.run_ids)
+    path = pointer_path(runs_root, record.mode, "champion")
+    payload = _pointer_payload(
+        record,
+        role="champion",
+        runs_root=runs_root,
+        previous_stack_id=previous_stack_id,
+    )
+    _write_json_if_generation(path, payload, expected_generation)
+    return resolve_pointer(
+        runs_root=runs_root,
+        mode=record.mode,
+        role="champion",
+    )
+
+
+def _pointer_payload(
+    record,
+    *,
+    role: str,
+    runs_root: str,
+    previous_stack_id: str | None,
+) -> dict:
+    return {
         "role": role,
         "mode": record.mode,
         "timeline": record.timeline,
         "stack_id": record.stack_id,
         "model_path": record.model_path,
         "model_sha256": _file_sha256(record.model_path),
-        "previous_stack_id": _previous_stack_id(path),
+        "previous_stack_id": previous_stack_id,
         "promoted_at": _utc_now(),
         "models": {
             name: {
@@ -157,13 +246,6 @@ def publish_pointer(
             for name, run_id in record.run_ids.items()
         },
     }
-    write_json(path, payload)
-    return resolve_pointer(
-        runs_root=runs_root,
-        mode=record.mode,
-        timeline=record.timeline,
-        role=role,
-    )
 
 
 def _resolve_payload(
@@ -412,6 +494,61 @@ def _update_digest(file, digest) -> None:
         if not chunk:
             return
         digest.update(chunk)
+
+
+def _write_json_if_generation(
+    path: str,
+    payload: dict,
+    expected_generation: int | None,
+) -> None:
+    text = json.dumps(payload, indent=2, sort_keys=True, default=str)
+    if is_gcs_url(path):
+        _gcs_upload_if_generation(path, text, expected_generation)
+        return
+    if pointer_generation(path) != expected_generation:
+        raise PointerConflictError(f"Pointer {path} changed before it was published")
+    write_json(path, payload)
+
+
+def _gcs_generation(path: str) -> int | None:
+    from google.cloud import storage
+
+    bucket_name, blob_name = _split_gcs(path)
+    blob = storage.Client().bucket(bucket_name).get_blob(blob_name)
+    if blob is None:
+        return None
+    return int(blob.generation)
+
+
+def _gcs_upload_if_generation(
+    path: str,
+    text: str,
+    expected_generation: int | None,
+) -> None:
+    from google.api_core.exceptions import PreconditionFailed
+    from google.cloud import storage
+
+    bucket_name, blob_name = _split_gcs(path)
+    blob = storage.Client().bucket(bucket_name).blob(blob_name)
+    match = 0 if expected_generation is None else expected_generation
+    try:
+        blob.upload_from_string(
+            text,
+            content_type="application/json",
+            if_generation_match=match,
+        )
+    except PreconditionFailed as exc:
+        raise PointerConflictError(
+            f"Pointer {path} changed before it was published"
+        ) from exc
+
+
+def _split_gcs(path: str) -> tuple[str, str]:
+    without_scheme = path[len("gs://") :]
+    bucket_name, _, blob_name = without_scheme.partition("/")
+    if not bucket_name or not blob_name:
+        raise ValueError(f"Invalid GCS path {path}")
+    return bucket_name, blob_name
 
 
 def _require_file(path: str) -> None:

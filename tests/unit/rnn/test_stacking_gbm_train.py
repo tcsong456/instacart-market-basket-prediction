@@ -5,17 +5,26 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
+from instacart_platform.pointers import (
+    PointerConflictError,
+    ResolvedModel,
+    ResolvedPointer,
+)
+from instacart_rnn.stacking.feature_selection import REQUIRED_MODELS
 from instacart_rnn.stacking.stacking_train import (
     NONE_TOKEN,
+    _evaluation_input_paths,
     basket_f1,
     choose_prefix,
     evaluation_artifact_path,
     evaluation_label_path,
     execute_backend_run,
     join_labeled_features,
+    load_champion_evaluation,
     mean_order_f1,
     predicted_basket,
     prediction_directory,
+    promote_trained_stack,
     resolve_backend_run,
     resolve_stack_directory,
     save_booster,
@@ -479,3 +488,435 @@ def test_join_labeled_features_keeps_labeled_product_rows():
     assert list(frame["label"]) == [1, 0]
     assert list(frame["aisle_logit"]) == [1.0, 2.0]
     assert "fold" not in frame.columns
+
+
+def _resolved_pointer(stack_id: str, role: str = "challenger") -> ResolvedPointer:
+    return ResolvedPointer(
+        role=role,
+        mode="curated",
+        timeline="t1",
+        stack_id=stack_id,
+        stack_dir=f"/tmp/stack/{stack_id}",
+        model_path=f"/tmp/stack/{stack_id}/model.txt",
+        previous_stack_id=None,
+        promoted_at="2026-01-01T00:00:00+00:00",
+        model_sha256="abc",
+        models={},
+    )
+
+
+def _promote(tmp_path, mocker, *, generation, champion_f1=None, champion_error=None):
+    stack_dir = tmp_path / "stack" / "stack-new"
+    stack_dir.mkdir(parents=True)
+    events = []
+
+    def publish_challenger(**kwargs):
+        events.append("challenger")
+        assert kwargs["role"] == "challenger"
+        return _resolved_pointer("stack-new")
+
+    def publish_champion(**kwargs):
+        recorded = json.loads((stack_dir / "stacking_train.json").read_text())
+        assert recorded["promotion_chosen"] is True
+        assert recorded["champion_updated"] is False
+        events.append(("champion", kwargs["expected_generation"]))
+        return _resolved_pointer("stack-new", role="champion")
+
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.publish_pointer",
+        side_effect=publish_challenger,
+    )
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.pointer_generation",
+        return_value=generation,
+    )
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.publish_champion_if_current",
+        side_effect=publish_champion,
+    )
+
+    def resolve_champion(**kwargs):
+        assert kwargs["role"] == "champion"
+        assert kwargs.get("timeline") is None
+        if champion_error is not None:
+            raise champion_error
+        return _resolved_pointer("stack-old", role="champion")
+
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.resolve_pointer",
+        side_effect=resolve_champion,
+    )
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train._evaluation_input_paths",
+        return_value={name: f"{name}.parquet" for name in REQUIRED_MODELS},
+    )
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.load_booster",
+        return_value=object(),
+    )
+    champion_frame = pd.DataFrame({"user_id": [9], "aisle_logit": [0.2]})
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.load_champion_evaluation",
+        return_value=(champion_frame, ["aisle_logit"]),
+    )
+
+    def score(booster, frame, columns):
+        events.append(("score", columns, frame["user_id"].tolist()))
+        return {"f1": champion_f1}
+
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.score_labeled_frame",
+        side_effect=score,
+    )
+    return stack_dir, events
+
+
+def test_promote_trained_stack_makes_the_first_stack_the_champion(tmp_path, mocker):
+    stack_dir, events = _promote(tmp_path, mocker, generation=None)
+
+    result = promote_trained_stack(
+        runs_root=str(tmp_path),
+        stack_dir=str(stack_dir),
+        evaluation_frame=pd.DataFrame({"user_id": [1]}),
+        evaluation_label_path="labels.parquet",
+        challenger_f1=0.41,
+        result={"evaluation_f1": 0.41},
+    )
+
+    assert events == ["challenger", ("champion", None)]
+    assert result["promotion_chosen"] is True
+    assert result["champion_updated"] is True
+    assert result["champion_f1"] is None
+    assert result["champion_timeline"] is None
+    assert result["previous_champion_stack_id"] is None
+
+
+def test_promote_trained_stack_promotes_a_higher_evaluation_f1(tmp_path, mocker):
+    stack_dir, events = _promote(tmp_path, mocker, generation=17, champion_f1=0.2)
+
+    result = promote_trained_stack(
+        runs_root=str(tmp_path),
+        stack_dir=str(stack_dir),
+        evaluation_frame=pd.DataFrame({"user_id": [1], "product_logit": [0.1]}),
+        evaluation_label_path="labels.parquet",
+        challenger_f1=0.41,
+        result={"evaluation_f1": 0.41},
+    )
+
+    assert events == [
+        "challenger",
+        ("score", ["aisle_logit"], [9]),
+        ("champion", 17),
+    ]
+    assert result["promotion_chosen"] is True
+    assert result["champion_f1"] == 0.2
+    assert result["champion_timeline"] == "t1"
+    assert result["previous_champion_stack_id"] == "stack-old"
+    assert result["champion_updated"] is True
+
+
+def test_promote_trained_stack_keeps_the_champion_when_f1_is_not_higher(
+    tmp_path,
+    mocker,
+):
+    stack_dir, events = _promote(tmp_path, mocker, generation=17, champion_f1=0.41)
+
+    result = promote_trained_stack(
+        runs_root=str(tmp_path),
+        stack_dir=str(stack_dir),
+        evaluation_frame=pd.DataFrame({"user_id": [1], "product_logit": [0.1]}),
+        evaluation_label_path="labels.parquet",
+        challenger_f1=0.41,
+        result={"evaluation_f1": 0.41},
+    )
+
+    assert events == ["challenger", ("score", ["aisle_logit"], [9])]
+    assert result["promotion_chosen"] is False
+    assert result["champion_updated"] is False
+
+
+def test_promote_trained_stack_does_not_replace_a_broken_champion(tmp_path, mocker):
+    stack_dir, events = _promote(
+        tmp_path,
+        mocker,
+        generation=17,
+        champion_error=FileNotFoundError("gs://runs/stack/stack-old/model.txt"),
+    )
+    (stack_dir / "stacking_train.json").write_text('{"kept": true}', encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="model.txt"):
+        promote_trained_stack(
+            runs_root=str(tmp_path),
+            stack_dir=str(stack_dir),
+            evaluation_frame=pd.DataFrame({"user_id": [1]}),
+            evaluation_label_path="labels.parquet",
+            challenger_f1=0.41,
+            result={"evaluation_f1": 0.41},
+        )
+
+    assert events == ["challenger"]
+    assert json.loads((stack_dir / "stacking_train.json").read_text()) == {"kept": True}
+
+
+def test_promote_trained_stack_records_the_decision_before_a_conflict(
+    tmp_path,
+    mocker,
+):
+    stack_dir, _events = _promote(tmp_path, mocker, generation=None)
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.publish_champion_if_current",
+        side_effect=PointerConflictError("Pointer changed before it was published"),
+    )
+
+    with pytest.raises(PointerConflictError, match="changed"):
+        promote_trained_stack(
+            runs_root=str(tmp_path),
+            stack_dir=str(stack_dir),
+            evaluation_frame=pd.DataFrame({"user_id": [1]}),
+            evaluation_label_path="labels.parquet",
+            challenger_f1=0.41,
+            result={"evaluation_f1": 0.41},
+        )
+
+    recorded = json.loads((stack_dir / "stacking_train.json").read_text())
+    assert recorded["promotion_chosen"] is True
+    assert recorded["champion_updated"] is False
+
+
+def test_execute_backend_run_copies_the_promotion_decision(tmp_path, mocker):
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.utc_now",
+        side_effect=["2026-01-01T00:00:00+00:00", "2026-01-01T01:00:00+00:00"],
+    )
+    paths = resolve_backend_run(str(tmp_path), "stacking_gbm", "run-1")
+
+    execute_backend_run(
+        paths,
+        run_attributes={
+            "run_id": "run-1",
+            "model_name": "stacking_gbm",
+            "git_commit": "abc123",
+            "image": "img:tag",
+        },
+        config={"stack_dir": "gs://runs/stack/stack-1"},
+        work=lambda: {
+            "evaluation_log_loss": 0.24,
+            "evaluation_f1": 0.37,
+            "evaluation_predictions_path": "predictions.parquet",
+            "stacking_validation_log_loss": 0.31,
+            "stacking_validation_f1": 0.28,
+            "stacking_validation_predictions_path": "stacking.parquet",
+            "model_path": "gs://runs/stack/stack-1/model.txt",
+            "challenger_stack_id": "stack-new",
+            "previous_champion_stack_id": "stack-old",
+            "champion_timeline": "initial",
+            "champion_f1": 0.2,
+            "promotion_chosen": True,
+            "champion_updated": True,
+        },
+    )
+
+    metrics = json.loads(
+        (tmp_path / "stacking_gbm" / "run-1" / "metrics.json").read_text()
+    )
+    assert metrics["promotion_chosen"] is True
+    assert metrics["champion_f1"] == 0.2
+    assert metrics["champion_timeline"] == "initial"
+    assert metrics["challenger_stack_id"] == "stack-new"
+
+
+def _champion_pointer(tmp_path, run_id: str) -> ResolvedPointer:
+    stack_dir = tmp_path / "stack" / "stack-old"
+    stack_dir.mkdir(parents=True)
+    (stack_dir / "stacking_train.json").write_text(
+        json.dumps({"feature_columns": ["product_logit", "aisle_logit"]}),
+        encoding="utf-8",
+    )
+    models = {
+        name: ResolvedModel(
+            model_name=name,
+            run_id=run_id,
+            artifact_path=str(
+                tmp_path / name / run_id / "artifacts" / "stacking_train"
+            ),
+            best_checkpoint=str(tmp_path / name / run_id / "checkpoints" / "best.pt"),
+            checkpoint_sha256="abc",
+        )
+        for name in REQUIRED_MODELS
+    }
+    return ResolvedPointer(
+        role="champion",
+        mode="curated",
+        timeline="t1",
+        stack_id="stack-old",
+        stack_dir=str(stack_dir),
+        model_path=str(stack_dir / "model.txt"),
+        previous_stack_id=None,
+        promoted_at="2026-01-01T00:00:00+00:00",
+        model_sha256="abc",
+        models=models,
+    )
+
+
+def _outputs_for(user_id: int):
+    product = pd.DataFrame(
+        {
+            "user_id": [user_id],
+            "product_id": [10],
+            "aisle_id": [100],
+            "product_logit": [0.4],
+        }
+    )
+    aisle = pd.DataFrame(
+        {"user_id": [user_id], "aisle_id": [100], "aisle_logit": [0.3]}
+    )
+    reorder = pd.DataFrame({"user_id": [user_id], "reorder_prediction": [1.0]})
+    gmm = pd.DataFrame({"user_id": [user_id], "gmm_nll_0": [0.5]})
+    labels = pd.DataFrame({"user_id": [user_id], "product_id": [10], "label": [1.0]})
+    return product, aisle, reorder, gmm, labels
+
+
+def test_load_champion_evaluation_uses_the_champion_exports(tmp_path, mocker):
+    champion = _champion_pointer(tmp_path, "run-old")
+    captured = {}
+
+    def read_outputs(paths):
+        captured["paths"] = paths
+        product, aisle, reorder, gmm, _labels = _outputs_for(4)
+        return product, aisle, reorder, gmm
+
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.read_stacking_outputs",
+        side_effect=read_outputs,
+    )
+    _product, _aisle, _reorder, _gmm, labels = _outputs_for(4)
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.read_frame",
+        return_value=labels,
+    )
+
+    frame, columns = load_champion_evaluation(
+        champion,
+        "gs://gold/product_training_data_evaluation",
+        np.array([4]),
+        runs_root=str(tmp_path),
+        evaluation_timeline="t1",
+        evaluation_inputs={name: f"{name}.parquet" for name in REQUIRED_MODELS},
+    )
+
+    assert columns == ["product_logit", "aisle_logit"]
+    assert frame["user_id"].tolist() == [4]
+    assert set(captured["paths"]) == set(REQUIRED_MODELS)
+    assert all(path.endswith("evaluation") for path in captured["paths"].values())
+    assert all("run-old" in path for path in captured["paths"].values())
+
+
+def test_load_champion_evaluation_rejects_different_users(tmp_path, mocker):
+    champion = _champion_pointer(tmp_path, "run-old")
+    product, aisle, reorder, gmm, labels = _outputs_for(4)
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.read_stacking_outputs",
+        return_value=(product, aisle, reorder, gmm),
+    )
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.read_frame",
+        return_value=labels,
+    )
+
+    with pytest.raises(ValueError, match="evaluation users"):
+        load_champion_evaluation(
+            champion,
+            "gs://gold/product_training_data_evaluation",
+            np.array([9]),
+            runs_root=str(tmp_path),
+            evaluation_timeline="t1",
+            evaluation_inputs={name: f"{name}.parquet" for name in REQUIRED_MODELS},
+        )
+
+
+def test_load_champion_evaluation_rescores_an_earlier_timeline(tmp_path, mocker):
+    champion = _champion_pointer(tmp_path, "run-old")
+    for name in REQUIRED_MODELS:
+        config = tmp_path / name / "run-old" / "config.json"
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(json.dumps({"lstm_size": 256}), encoding="utf-8")
+    exported = []
+
+    def export(**kwargs):
+        exported.append(kwargs)
+
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train._export_checkpoint",
+        side_effect=export,
+    )
+
+    def read_outputs(paths):
+        exported.append(paths)
+        product, aisle, reorder, gmm, _labels = _outputs_for(4)
+        return product, aisle, reorder, gmm
+
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.read_stacking_outputs",
+        side_effect=read_outputs,
+    )
+    _product, _aisle, _reorder, _gmm, labels = _outputs_for(4)
+    mocker.patch(
+        "instacart_rnn.stacking.stacking_train.read_frame",
+        return_value=labels,
+    )
+    inputs = {
+        name: f"gs://gold/training/curated/t2/{name}_training_data_evaluation"
+        for name in REQUIRED_MODELS
+    }
+
+    frame, _columns = load_champion_evaluation(
+        champion,
+        inputs["product"],
+        np.array([4]),
+        runs_root=str(tmp_path),
+        evaluation_timeline="t2",
+        evaluation_inputs=inputs,
+    )
+
+    calls = exported[:-1]
+    scored_paths = exported[-1]
+    assert frame["user_id"].tolist() == [4]
+    assert {call["model_name"] for call in calls} == set(REQUIRED_MODELS)
+    for call in calls:
+        name = call["model_name"]
+        output_path = call["output_path"].replace("\\", "/")
+        assert call["input_path"] == inputs[name]
+        assert call["checkpoint_path"] == champion.models[name].best_checkpoint
+        assert call["lstm_size"] == 256
+        assert output_path.endswith(f"rescore/t2/stack-old/{name}")
+        assert scored_paths[name] == call["output_path"]
+
+
+def test_evaluation_input_paths_follow_this_timeline(tmp_path):
+    stack_dir = tmp_path / "stack" / "stack-new"
+    stack_dir.mkdir(parents=True)
+    models = {}
+    for name in REQUIRED_MODELS:
+        filename = (
+            "reorder_size_training_data_train"
+            if "reorder_size" in name
+            else f"{name}_training_data_train"
+        )
+        models[name] = {
+            "train_path": f"gs://gold/training/curated/t2/{filename}",
+        }
+    (stack_dir / "selected_artifacts.json").write_text(
+        json.dumps({"models": models}),
+        encoding="utf-8",
+    )
+
+    paths = _evaluation_input_paths(
+        str(stack_dir),
+        "gs://gold/training/curated/t2/product_training_data_evaluation",
+    )
+
+    assert paths["product"].endswith("product_training_data_evaluation")
+    assert "/t2/" in paths["aisle"]
+    assert paths["aisle"].endswith("aisle_training_data_evaluation")
+    assert paths["reorder_size_rnn"].endswith("reorder_size_training_data_evaluation")
+    assert paths["reorder_size_gmm"].endswith("reorder_size_training_data_evaluation")
