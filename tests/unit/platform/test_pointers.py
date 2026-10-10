@@ -1,11 +1,15 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from instacart_etl_rnn.common.paths import join_path
 from instacart_platform.pointers import (
+    PointerConflictError,
+    pointer_generation,
+    publish_champion_if_current,
     publish_pointer,
     resolve_pointer,
 )
@@ -108,7 +112,7 @@ def test_resolve_pointer_rejects_a_timeline_mismatch(tmp_path):
         stack_dir=str(tmp_path / "stack" / "stack-named"),
         role="champion",
     )
-    pointer = tmp_path / "pointers" / "curated" / "t1" / "champion.json"
+    pointer = tmp_path / "pointers" / "curated" / "champion.json"
     payload = json.loads(pointer.read_text(encoding="utf-8"))
     payload["timeline"] = "t2"
     pointer.write_text(json.dumps(payload), encoding="utf-8")
@@ -131,7 +135,7 @@ def test_resolve_pointer_rejects_a_stack_id_that_disagrees_with_the_manifest(
     payload["stack_id"] = "stack-other"
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     write_json(
-        str(tmp_path / "pointers" / "curated" / "t1" / "champion.json"),
+        str(tmp_path / "pointers" / "curated" / "champion.json"),
         {
             "role": "champion",
             "mode": "curated",
@@ -158,7 +162,7 @@ def test_resolve_pointer_rejects_a_named_run_without_success(tmp_path):
         _write_run(runs_root=tmp_path, model_name=name, run_id=NAMED_RUN, success=False)
     _write_stack(tmp_path, stack_id="stack-named", run_id=NAMED_RUN)
     write_json(
-        str(tmp_path / "pointers" / "curated" / "t1" / "champion.json"),
+        str(tmp_path / "pointers" / "curated" / "champion.json"),
         {
             "role": "champion",
             "mode": "curated",
@@ -266,3 +270,165 @@ def test_resolve_pointer_rejects_a_replaced_checkpoint(tmp_path):
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _champion_file(runs_root: Path) -> Path:
+    return runs_root / "pointers" / "curated" / "champion.json"
+
+
+def test_publish_champion_if_current_creates_a_missing_champion(tmp_path):
+    stack_dir = _write_named_stack(tmp_path)
+    champion_file = _champion_file(tmp_path)
+    assert pointer_generation(str(champion_file)) is None
+
+    resolved = publish_champion_if_current(
+        runs_root=str(tmp_path),
+        stack_dir=stack_dir,
+        expected_generation=None,
+        previous_stack_id=None,
+    )
+
+    assert resolved.role == "champion"
+    assert resolved.stack_id == "stack-named"
+    assert resolved.previous_stack_id is None
+    assert pointer_generation(str(champion_file)) is not None
+
+
+def test_publish_champion_if_current_rejects_a_stale_generation(tmp_path):
+    stack_dir = _write_named_stack(tmp_path, stack_id="stack-first")
+    publish_champion_if_current(
+        runs_root=str(tmp_path),
+        stack_dir=stack_dir,
+        expected_generation=None,
+        previous_stack_id=None,
+    )
+    champion_file = _champion_file(tmp_path)
+    observed = pointer_generation(str(champion_file))
+    os.utime(champion_file, ns=(1, 1))
+    replacement = _write_stack(tmp_path, stack_id="stack-second", run_id=NAMED_RUN)
+
+    with pytest.raises(PointerConflictError, match="changed"):
+        publish_champion_if_current(
+            runs_root=str(tmp_path),
+            stack_dir=replacement,
+            expected_generation=observed,
+            previous_stack_id="stack-first",
+        )
+
+    payload = json.loads(champion_file.read_text(encoding="utf-8"))
+    assert payload["stack_id"] == "stack-first"
+
+
+def test_publish_champion_if_current_rejects_create_when_the_file_exists(tmp_path):
+    stack_dir = _write_named_stack(tmp_path, stack_id="stack-first")
+    publish_champion_if_current(
+        runs_root=str(tmp_path),
+        stack_dir=stack_dir,
+        expected_generation=None,
+        previous_stack_id=None,
+    )
+    replacement = _write_stack(tmp_path, stack_id="stack-second", run_id=NAMED_RUN)
+
+    with pytest.raises(PointerConflictError, match="changed"):
+        publish_champion_if_current(
+            runs_root=str(tmp_path),
+            stack_dir=replacement,
+            expected_generation=None,
+            previous_stack_id=None,
+        )
+
+    payload = json.loads(_champion_file(tmp_path).read_text(encoding="utf-8"))
+    assert payload["stack_id"] == "stack-first"
+
+
+def test_champion_pointer_is_shared_across_timelines(tmp_path):
+    for name in REQUIRED_MODELS:
+        _write_run(tmp_path, model_name=name, run_id=NAMED_RUN)
+    initial = _write_stack(
+        tmp_path,
+        stack_id="stack-initial",
+        run_id=NAMED_RUN,
+        timeline="initial",
+    )
+    publish_pointer(runs_root=str(tmp_path), stack_dir=initial, role="champion")
+    champion_file = _champion_file(tmp_path)
+    assert champion_file.is_file()
+    timeline_champion = tmp_path / "pointers" / "curated" / "initial" / "champion.json"
+    assert not timeline_champion.exists()
+
+    resolved = resolve_pointer(
+        runs_root=str(tmp_path),
+        mode="curated",
+        role="champion",
+    )
+    assert resolved.timeline == "initial"
+    assert resolved.stack_id == "stack-initial"
+
+    later = _write_stack(
+        tmp_path,
+        stack_id="stack-t2",
+        run_id=NAMED_RUN,
+        timeline="t2",
+    )
+    promoted = publish_champion_if_current(
+        runs_root=str(tmp_path),
+        stack_dir=later,
+        expected_generation=pointer_generation(str(champion_file)),
+        previous_stack_id="stack-initial",
+    )
+    assert promoted.timeline == "t2"
+    assert promoted.previous_stack_id == "stack-initial"
+    assert not (tmp_path / "pointers" / "curated" / "t2" / "champion.json").exists()
+
+    challenger_dir = _write_stack(
+        tmp_path,
+        stack_id="stack-t1",
+        run_id=NAMED_RUN,
+        timeline="t1",
+    )
+    challenger = publish_pointer(
+        runs_root=str(tmp_path),
+        stack_dir=challenger_dir,
+        role="challenger",
+    )
+    assert challenger.timeline == "t1"
+    challenger_file = tmp_path / "pointers" / "curated" / "t1" / "challenger.json"
+    assert challenger_file.is_file()
+    payload = json.loads(champion_file.read_text(encoding="utf-8"))
+    assert payload["stack_id"] == "stack-t2"
+
+
+def test_gcs_champion_upload_matches_the_observed_generation(mocker):
+    blob = mocker.Mock()
+    bucket = mocker.Mock()
+    bucket.blob.return_value = blob
+    client = mocker.Mock()
+    client.bucket.return_value = bucket
+    mocker.patch("google.cloud.storage.Client", return_value=client)
+
+    from instacart_platform.pointers import _gcs_upload_if_generation
+
+    _gcs_upload_if_generation("gs://bucket/pointers/champion.json", "{}", 17)
+
+    blob.upload_from_string.assert_called_once_with(
+        "{}",
+        content_type="application/json",
+        if_generation_match=17,
+    )
+
+
+def test_gcs_champion_upload_reports_a_precondition_failure(mocker):
+    from google.api_core.exceptions import PreconditionFailed
+
+    blob = mocker.Mock()
+    blob.upload_from_string.side_effect = PreconditionFailed("changed")
+    bucket = mocker.Mock()
+    bucket.blob.return_value = blob
+    client = mocker.Mock()
+    client.bucket.return_value = bucket
+    mocker.patch("google.cloud.storage.Client", return_value=client)
+
+    from instacart_platform.pointers import _gcs_upload_if_generation
+
+    with pytest.raises(PointerConflictError, match="changed"):
+        _gcs_upload_if_generation("gs://bucket/pointers/champion.json", "{}", 0)

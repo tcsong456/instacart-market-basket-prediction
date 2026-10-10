@@ -13,6 +13,14 @@ import pyarrow.parquet as pq
 
 from instacart_etl_rnn.common.paths import is_gcs_url, join_path
 from instacart_etl_rnn.common.setup_logging import configure_logging
+from instacart_platform.pointers import (
+    ResolvedPointer,
+    pointer_generation,
+    pointer_path,
+    publish_champion_if_current,
+    publish_pointer,
+    resolve_pointer,
+)
 from instacart_platform.runs import (
     RunPaths,
     build_run_paths,
@@ -38,11 +46,23 @@ from instacart_rnn.stacking.feature_selection import (
     _read_frame as read_frame,
 )
 from instacart_rnn.stacking.feature_selection import (
+    _read_json as read_json,
+)
+from instacart_rnn.stacking.feature_selection import (
     _require_unique as require_unique,
 )
 from instacart_rnn.stacking.folds import write_stack
 
 logger = logging.getLogger(__name__)
+
+_PROMOTION_METRIC_KEYS = (
+    "challenger_stack_id",
+    "previous_champion_stack_id",
+    "champion_timeline",
+    "champion_f1",
+    "promotion_chosen",
+    "champion_updated",
+)
 
 NONE_TOKEN = "None"
 GBM_PARAMETERS = {
@@ -86,20 +106,6 @@ def resolve_stack_directory(
     n_folds: int,
     seed: int,
 ) -> str:
-    """Return an existing stack directory or create one for this mode and timeline.
-
-    Args:
-        stack_dir: Existing stack directory. Skips artifact selection.
-        runs_root: Root that contains the completed model runs.
-        mode: Gold dataset mode used to select runs.
-        timeline: Gold timeline used to select runs.
-        n_folds: Number of user folds written for a new stack.
-        seed: Salt for the fold assignment.
-
-    Returns:
-        The stack directory that holds ``selected_artifacts.json``.
-    """
-
     if stack_dir:
         return stack_dir.rstrip("/")
     if not runs_root or not mode or not timeline:
@@ -617,26 +623,384 @@ def execute_backend_run(
     if paths is None:
         return result
 
-    write_json(
-        paths.metrics_json,
-        {
-            "evaluation_log_loss": result["evaluation_log_loss"],
-            "evaluation_f1": result["evaluation_f1"],
-            "evaluation_predictions_path": result["evaluation_predictions_path"],
-            "stacking_validation_log_loss": result["stacking_validation_log_loss"],
-            "stacking_validation_f1": result["stacking_validation_f1"],
-            "stacking_validation_predictions_path": result[
-                "stacking_validation_predictions_path"
-            ],
-            "model_path": result["model_path"],
-        },
-    )
+    write_json(paths.metrics_json, _run_metrics(result))
     write_json(
         paths.run_json,
         {"status": "completed", "completed_at": utc_now(), **attributes},
     )
     write_success_marker(paths.success_marker)
     return result
+
+
+def promote_trained_stack(
+    *,
+    runs_root: str,
+    stack_dir: str,
+    evaluation_frame: pd.DataFrame,
+    evaluation_label_path: str,
+    challenger_f1: float,
+    result: dict,
+) -> dict:
+    """Publish the trained stack and promote it when its evaluation F1 wins.
+
+    The challenger pointer is written first. The decision is stored in
+    ``stacking_train.json`` before ``champion.json`` changes. A missing
+    production champion makes this stack the champion. An existing champion
+    is the mode pointer, shared by every timeline. It is scored on this
+    timeline's evaluation labels. A champion trained on an earlier timeline
+    is rescored from its frozen checkpoints; any failure there fails the job.
+
+    Args:
+        runs_root: Root that contains ``pointers`` and completed runs.
+        stack_dir: Stack directory that already holds ``model.txt``.
+        evaluation_frame: Evaluation rows used to score this stack.
+        evaluation_label_path: Gold labels for this timeline's evaluation.
+        challenger_f1: Basket F1 of this stack on ``evaluation_frame``.
+        result: Training record already written to ``stacking_train.json``.
+
+    Returns:
+        ``result`` plus the promotion decision.
+    """
+
+    challenger = publish_pointer(
+        runs_root=runs_root,
+        stack_dir=stack_dir,
+        role="challenger",
+    )
+    champion_file = pointer_path(runs_root, challenger.mode, "champion")
+    generation = pointer_generation(champion_file)
+    if generation is None:
+        decision = _promotion_decision(
+            challenger_stack_id=challenger.stack_id,
+            previous_champion_stack_id=None,
+            champion_timeline=None,
+            champion_f1=None,
+            promotion_chosen=True,
+        )
+    else:
+        champion = resolve_pointer(
+            runs_root=runs_root,
+            mode=challenger.mode,
+            role="champion",
+        )
+        champion_frame, champion_columns = load_champion_evaluation(
+            champion,
+            evaluation_label_path,
+            evaluation_frame["user_id"].to_numpy(),
+            runs_root=runs_root,
+            evaluation_timeline=challenger.timeline,
+            evaluation_inputs=_evaluation_input_paths(
+                stack_dir,
+                evaluation_label_path,
+            ),
+        )
+        champion_f1 = score_labeled_frame(
+            load_booster(champion.model_path),
+            champion_frame,
+            champion_columns,
+        )["f1"]
+        decision = _promotion_decision(
+            challenger_stack_id=challenger.stack_id,
+            previous_champion_stack_id=champion.stack_id,
+            champion_timeline=champion.timeline,
+            champion_f1=champion_f1,
+            promotion_chosen=challenger_f1 > champion_f1,
+        )
+    updated = {**result, **decision}
+    _write_stack_record(stack_dir, updated)
+    if decision["promotion_chosen"]:
+        publish_champion_if_current(
+            runs_root=runs_root,
+            stack_dir=stack_dir,
+            expected_generation=generation,
+            previous_stack_id=decision["previous_champion_stack_id"],
+        )
+        updated = {**updated, "champion_updated": True}
+        _write_stack_record(stack_dir, updated)
+    logger.info(
+        "Challenger %s F1 %.5f previous champion %s F1 %s promoted %s",
+        decision["challenger_stack_id"],
+        challenger_f1,
+        decision["previous_champion_stack_id"],
+        decision["champion_f1"],
+        updated["champion_updated"],
+    )
+    return updated
+
+
+def load_champion_evaluation(
+    champion: ResolvedPointer,
+    label_path: str,
+    challenger_users: np.ndarray,
+    *,
+    runs_root: str,
+    evaluation_timeline: str,
+    evaluation_inputs: Mapping[str, str],
+) -> tuple[pd.DataFrame, list[str]]:
+    """Build the champion frame on this timeline's evaluation snapshot.
+
+    Args:
+        champion: Resolved production champion.
+        label_path: Evaluation gold labels used to score the challenger.
+        challenger_users: User ids in the challenger's evaluation frame.
+        runs_root: Root that contains the champion's base runs.
+        evaluation_timeline: Timeline whose evaluation gold is being scored.
+        evaluation_inputs: Evaluation gold path for each base model.
+
+    Returns:
+        Labeled rows from the champion's features on this snapshot, and the
+        feature columns saved with that stack.
+    """
+
+    artifact_paths = champion_evaluation_artifacts(
+        champion,
+        runs_root=runs_root,
+        evaluation_timeline=evaluation_timeline,
+        evaluation_inputs=evaluation_inputs,
+    )
+    product, aisle, reorder, gmm = read_stacking_outputs(artifact_paths)
+    labels = read_frame(label_path, list(LABEL_COLUMNS))
+    frame = join_labeled_features(
+        product=product,
+        aisle=aisle,
+        reorder=reorder,
+        gmm=gmm,
+        labels=labels,
+    )
+    _require_same_evaluation_users(challenger_users, frame["user_id"].to_numpy())
+    columns = _saved_feature_columns(champion.stack_dir)
+    missing = [column for column in columns if column not in frame.columns]
+    if missing:
+        raise ValueError(f"Champion evaluation features are missing {missing}")
+    return frame, columns
+
+
+def load_booster(path: str):
+    """Load a LightGBM booster from a local path or ``gs://`` object.
+
+    Args:
+        path: ``model.txt`` path.
+
+    Returns:
+        A booster that can ``predict``.
+    """
+
+    try:
+        import lightgbm as lgb
+    except ImportError as exc:
+        raise RuntimeError(
+            "lightgbm is required to train the stacking GBM. "
+            "Install the stacking extra."
+        ) from exc
+
+    if not is_gcs_url(path):
+        return lgb.Booster(model_file=path)
+    filesystem = gcsfs.GCSFileSystem()
+    filesystem.invalidate_cache(path)
+    with filesystem.open(path, "rb") as remote_file:
+        payload = remote_file.read()
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as handle:
+        handle.write(payload)
+        local_path = handle.name
+    try:
+        return lgb.Booster(model_file=local_path)
+    finally:
+        Path(local_path).unlink()
+
+
+def _saved_feature_columns(stack_dir: str) -> list[str]:
+    path = str(join_path(stack_dir, "stacking_train.json"))
+    columns = read_json(path).get("feature_columns")
+    if (
+        not isinstance(columns, list)
+        or not columns
+        or any(not isinstance(column, str) or not column for column in columns)
+    ):
+        raise ValueError(f"{path} has no feature_columns")
+    return columns
+
+
+def _require_same_evaluation_users(
+    challenger_users: np.ndarray,
+    champion_users: np.ndarray,
+) -> None:
+    expected = {int(user_id) for user_id in np.unique(challenger_users)}
+    actual = {int(user_id) for user_id in np.unique(champion_users)}
+    if expected != actual:
+        raise ValueError(
+            "Champion evaluation users do not match the challenger: "
+            f"{len(expected)} challenger users, {len(actual)} champion users"
+        )
+
+
+def champion_evaluation_artifacts(
+    champion: ResolvedPointer,
+    *,
+    runs_root: str,
+    evaluation_timeline: str,
+    evaluation_inputs: Mapping[str, str],
+) -> dict[str, str]:
+    """Return champion feature directories for one evaluation timeline.
+
+    A champion trained on this timeline already has evaluation exports for
+    this history. A champion trained on an earlier timeline is exported again
+    from its frozen checkpoints onto this timeline's evaluation inputs.
+
+    Args:
+        champion: Resolved production champion.
+        runs_root: Root that contains the champion's base runs.
+        evaluation_timeline: Timeline whose evaluation gold is being scored.
+        evaluation_inputs: Evaluation gold path for each base model.
+
+    Returns:
+        Artifact directory for each required model.
+    """
+
+    if champion.timeline == evaluation_timeline:
+        return {
+            name: evaluation_artifact_path(model.artifact_path)
+            for name, model in champion.models.items()
+        }
+    missing = [name for name in REQUIRED_MODELS if not evaluation_inputs.get(name)]
+    if missing:
+        raise ValueError(f"Evaluation inputs are missing {missing}")
+    paths = {}
+    for name in REQUIRED_MODELS:
+        model = champion.models[name]
+        output_path = _rescore_output_path(
+            runs_root,
+            champion.mode,
+            evaluation_timeline,
+            champion.stack_id,
+            name,
+        )
+        _export_checkpoint(
+            model_name=name,
+            checkpoint_path=model.best_checkpoint,
+            input_path=evaluation_inputs[name],
+            output_path=output_path,
+            lstm_size=_lstm_size(runs_root, name, model.run_id),
+        )
+        paths[name] = output_path
+    return paths
+
+
+def _evaluation_input_paths(stack_dir: str, product_label_path: str) -> dict[str, str]:
+    manifest = load_selected_artifacts(
+        str(join_path(stack_dir, "selected_artifacts.json"))
+    )
+    paths = {}
+    for name in REQUIRED_MODELS:
+        if name == "product":
+            paths[name] = product_label_path
+            continue
+        train_path = manifest["models"][name].get("train_path")
+        if not isinstance(train_path, str) or not train_path:
+            raise ValueError(f"{name} has no train_path in {stack_dir}")
+        paths[name] = evaluation_label_path(train_path)
+    return paths
+
+
+def _rescore_output_path(
+    runs_root: str,
+    mode: str,
+    evaluation_timeline: str,
+    stack_id: str,
+    model_name: str,
+) -> str:
+    return str(
+        join_path(
+            join_path(
+                join_path(
+                    join_path(
+                        join_path(
+                            join_path(runs_root.rstrip("/"), "pointers"),
+                            mode,
+                        ),
+                        "rescore",
+                    ),
+                    evaluation_timeline,
+                ),
+                stack_id,
+            ),
+            model_name,
+        )
+    )
+
+
+def _lstm_size(runs_root: str, model_name: str, run_id: str) -> int:
+    path = str(
+        build_run_paths(
+            runs_root=runs_root,
+            model_name=model_name,
+            run_id=run_id,
+        ).config_json
+    )
+    size = read_json(path).get("lstm_size")
+    if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+        raise ValueError(f"{path} lstm_size is {size!r}")
+    return size
+
+
+def _export_checkpoint(
+    *,
+    model_name: str,
+    checkpoint_path: str,
+    input_path: str,
+    output_path: str,
+    lstm_size: int,
+) -> None:
+    from instacart_rnn.training.runner import InferenceRunConfig, run_inference
+
+    run_inference(
+        InferenceRunConfig(
+            model_name=model_name,
+            input_path=input_path,
+            checkpoint_path=checkpoint_path,
+            output_path=output_path,
+            lstm_size=lstm_size,
+        )
+    )
+
+
+def _promotion_decision(
+    *,
+    challenger_stack_id: str,
+    previous_champion_stack_id: str | None,
+    champion_timeline: str | None,
+    champion_f1: float | None,
+    promotion_chosen: bool,
+) -> dict:
+    return {
+        "challenger_stack_id": challenger_stack_id,
+        "previous_champion_stack_id": previous_champion_stack_id,
+        "champion_timeline": champion_timeline,
+        "champion_f1": champion_f1,
+        "promotion_chosen": promotion_chosen,
+        "champion_updated": False,
+    }
+
+
+def _write_stack_record(stack_dir: str, result: dict) -> None:
+    write_json(str(join_path(stack_dir, "stacking_train.json")), result)
+
+
+def _run_metrics(result: Mapping[str, object]) -> dict:
+    metrics = {
+        "evaluation_log_loss": result["evaluation_log_loss"],
+        "evaluation_f1": result["evaluation_f1"],
+        "evaluation_predictions_path": result["evaluation_predictions_path"],
+        "stacking_validation_log_loss": result["stacking_validation_log_loss"],
+        "stacking_validation_f1": result["stacking_validation_f1"],
+        "stacking_validation_predictions_path": result[
+            "stacking_validation_predictions_path"
+        ],
+        "model_path": result["model_path"],
+    }
+    for key in _PROMOTION_METRIC_KEYS:
+        if key in result:
+            metrics[key] = result[key]
+    return metrics
 
 
 def main() -> None:
@@ -747,6 +1111,15 @@ def main() -> None:
             "stacking_validation_predictions_path": stacking_predictions,
         }
         write_json(str(join_path(stack_dir, "stacking_train.json")), result)
+        if args.runs_root:
+            result = promote_trained_stack(
+                runs_root=args.runs_root,
+                stack_dir=stack_dir,
+                evaluation_frame=evaluation_frame,
+                evaluation_label_path=evaluation_labels,
+                challenger_f1=evaluation_score["f1"],
+                result=result,
+            )
         logger.info(
             "Evaluation users %d log loss %.5f basket F1 %.5f",
             result["n_evaluation_users"],
