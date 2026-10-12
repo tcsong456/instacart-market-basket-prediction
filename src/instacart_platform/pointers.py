@@ -150,11 +150,14 @@ def publish_pointer(
     record = _load_stack_record(stack_dir)
     _require_completed_models(runs_root, record.run_ids)
     path = pointer_path(runs_root, record.mode, role, record.timeline)
+    previous = _existing_pointer(path)
     payload = _pointer_payload(
         record,
         role=role,
         runs_root=runs_root,
-        previous_stack_id=_previous_stack_id(path),
+        previous_stack_id=None if previous is None else previous["stack_id"],
+        previous_model_sha256=None if previous is None else previous["model_sha256"],
+        previous_models=None if previous is None else previous["models"],
     )
     write_json(path, payload)
     return resolve_pointer(
@@ -208,11 +211,20 @@ def publish_champion_if_current(
     record = _load_stack_record(stack_dir)
     _require_completed_models(runs_root, record.run_ids)
     path = pointer_path(runs_root, record.mode, "champion")
+    previous = _existing_pointer(path) if previous_stack_id is not None else None
+    if previous is not None:
+        _require_equal(
+            previous.get("stack_id"),
+            previous_stack_id,
+            f"Pointer {path} stack_id",
+        )
     payload = _pointer_payload(
         record,
         role="champion",
         runs_root=runs_root,
         previous_stack_id=previous_stack_id,
+        previous_model_sha256=None if previous is None else previous["model_sha256"],
+        previous_models=None if previous is None else previous["models"],
     )
     _write_json_if_generation(path, payload, expected_generation)
     return resolve_pointer(
@@ -222,12 +234,71 @@ def publish_champion_if_current(
     )
 
 
+def rollback_champion(
+    *,
+    runs_root: str,
+    mode: str,
+) -> ResolvedPointer:
+    """Restore the previous production champion for one mode.
+
+    The current champion stack becomes ``previous_stack_id``, so a second
+    rollback returns to the stack that was just left. The previous stack's
+    ``model.txt`` and checkpoints are fingerprinted. The current champion's
+    files are left in place.
+
+    Args:
+        runs_root: Root that contains ``pointers`` and the completed runs.
+        mode: Gold dataset mode, such as ``sample`` or ``curated``.
+
+    Returns:
+        The champion pointer after the previous stack has been published.
+
+    Raises:
+        FileNotFoundError: No champion pointer exists, or the previous stack
+            is missing a required file.
+        ValueError: The champion has no previous stack, or the previous
+            stack does not match its recorded fingerprints.
+        PointerConflictError: The champion changed before it was published.
+    """
+
+    path = pointer_path(runs_root, mode, "champion")
+    generation = pointer_generation(path)
+    if generation is None:
+        raise FileNotFoundError(path)
+    payload = _read_json(path)
+    _require_equal(payload.get("role"), "champion", f"Pointer {path} role")
+    _require_equal(payload.get("mode"), mode, f"Pointer {path} mode")
+    current_stack_id = _require_segment(payload.get("stack_id"), "stack_id")
+    previous_stack_id = _optional_stack_id(payload.get("previous_stack_id"), path)
+    if previous_stack_id is None:
+        raise ValueError(
+            f"Champion {current_stack_id} has no previous stack to restore"
+        )
+    previous_dir = stack_output_dir(runs_root, previous_stack_id)
+    record = _load_stack_record(previous_dir)
+    _require_equal(record.mode, mode, f"Stack {previous_dir} mode")
+    _require_previous_fingerprints(
+        path=path,
+        payload=payload,
+        record=record,
+        runs_root=runs_root,
+    )
+    return publish_champion_if_current(
+        runs_root=runs_root,
+        stack_dir=previous_dir,
+        expected_generation=generation,
+        previous_stack_id=current_stack_id,
+    )
+
+
 def _pointer_payload(
     record,
     *,
     role: str,
     runs_root: str,
     previous_stack_id: str | None,
+    previous_model_sha256: str | None = None,
+    previous_models: dict | None = None,
 ) -> dict:
     return {
         "role": role,
@@ -237,6 +308,8 @@ def _pointer_payload(
         "model_path": record.model_path,
         "model_sha256": _file_sha256(record.model_path),
         "previous_stack_id": previous_stack_id,
+        "previous_model_sha256": previous_model_sha256,
+        "previous_models": previous_models,
         "promoted_at": _utc_now(),
         "models": {
             name: {
@@ -439,14 +512,58 @@ def _pointer_run_ids(models: object, path: str) -> dict[str, str]:
     return run_ids
 
 
-def _previous_stack_id(path: str) -> str | None:
+def _existing_pointer(path: str) -> dict | None:
     if not success_marker_exists(path):
         return None
     payload = _read_json(path)
     stack_id = payload.get("stack_id")
     if not isinstance(stack_id, str) or not stack_id.strip():
         raise ValueError(f"Pointer {path} has no stack_id")
-    return stack_id
+    model_sha256 = payload.get("model_sha256")
+    models = payload.get("models")
+    if not isinstance(model_sha256, str) or not model_sha256:
+        raise ValueError(f"Pointer {path} has no model_sha256")
+    if not isinstance(models, dict):
+        raise ValueError(f"Pointer {path} has no models")
+    return {
+        "stack_id": stack_id,
+        "model_sha256": model_sha256,
+        "models": models,
+    }
+
+
+def _require_previous_fingerprints(
+    *,
+    path: str,
+    payload: dict,
+    record,
+    runs_root: str,
+) -> None:
+    recorded_model = payload.get("previous_model_sha256")
+    if not isinstance(recorded_model, str) or not recorded_model:
+        raise ValueError(f"Pointer {path} has no previous_model_sha256")
+    _require_fingerprint(
+        recorded_model,
+        _file_sha256(record.model_path),
+        f"Pointer {path} previous_model_sha256",
+    )
+    previous_models = payload.get("previous_models")
+    if not isinstance(previous_models, dict):
+        raise ValueError(f"Pointer {path} has no previous_models")
+    for name, run_id in record.run_ids.items():
+        entry = previous_models.get(name)
+        if not isinstance(entry, dict):
+            raise ValueError(f"Pointer {path} previous model {name} is not an object")
+        _require_equal(
+            entry.get("run_id"),
+            run_id,
+            f"Pointer {path} previous run_id for {name}",
+        )
+        _require_fingerprint(
+            entry.get("checkpoint_sha256"),
+            _checkpoint_sha256(runs_root, name, run_id),
+            f"Pointer {path} previous checkpoint_sha256 for {name}",
+        )
 
 
 def _optional_stack_id(value: object, path: str) -> str | None:

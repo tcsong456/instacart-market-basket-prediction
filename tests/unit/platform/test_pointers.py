@@ -12,6 +12,7 @@ from instacart_platform.pointers import (
     publish_champion_if_current,
     publish_pointer,
     resolve_pointer,
+    rollback_champion,
 )
 from instacart_platform.runs import build_run_paths, write_json, write_success_marker
 from instacart_rnn.stacking.feature_selection import REQUIRED_MODELS
@@ -396,6 +397,94 @@ def test_champion_pointer_is_shared_across_timelines(tmp_path):
     assert challenger_file.is_file()
     payload = json.loads(champion_file.read_text(encoding="utf-8"))
     assert payload["stack_id"] == "stack-t2"
+
+
+def _publish_two_champions(tmp_path) -> None:
+    for name in REQUIRED_MODELS:
+        _write_run(tmp_path, model_name=name, run_id=NAMED_RUN)
+    first = _write_stack(
+        tmp_path,
+        stack_id="stack-first",
+        run_id=NAMED_RUN,
+        timeline="initial",
+    )
+    second = _write_stack(
+        tmp_path,
+        stack_id="stack-second",
+        run_id=NAMED_RUN,
+        timeline="t1",
+    )
+    publish_pointer(runs_root=str(tmp_path), stack_dir=first, role="champion")
+    publish_pointer(runs_root=str(tmp_path), stack_dir=second, role="champion")
+
+
+def test_rollback_champion_restores_the_previous_stack(tmp_path):
+    _publish_two_champions(tmp_path)
+
+    restored = rollback_champion(runs_root=str(tmp_path), mode="curated")
+
+    assert restored.stack_id == "stack-first"
+    assert restored.previous_stack_id == "stack-second"
+    assert restored.timeline == "initial"
+
+    returned = rollback_champion(runs_root=str(tmp_path), mode="curated")
+
+    assert returned.stack_id == "stack-second"
+    assert returned.previous_stack_id == "stack-first"
+
+
+def test_rollback_champion_rejects_a_champion_with_no_history(tmp_path):
+    stack_dir = _write_named_stack(tmp_path)
+    publish_pointer(runs_root=str(tmp_path), stack_dir=stack_dir, role="champion")
+
+    with pytest.raises(ValueError, match="no previous stack"):
+        rollback_champion(runs_root=str(tmp_path), mode="curated")
+
+
+def test_rollback_champion_raises_when_the_pointer_is_missing(tmp_path):
+    with pytest.raises(FileNotFoundError, match="champion.json"):
+        rollback_champion(runs_root=str(tmp_path), mode="curated")
+
+
+def test_rollback_champion_keeps_the_current_stack_when_the_previous_file_changed(
+    tmp_path,
+):
+    _publish_two_champions(tmp_path)
+    model_path = tmp_path / "stack" / "stack-first" / "model.txt"
+    model_path.write_text("other\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="model_sha256"):
+        rollback_champion(runs_root=str(tmp_path), mode="curated")
+
+    payload = json.loads(_champion_file(tmp_path).read_text(encoding="utf-8"))
+    assert payload["stack_id"] == "stack-second"
+
+
+def test_rollback_champion_restores_when_the_current_model_file_changed(tmp_path):
+    _publish_two_champions(tmp_path)
+    model_path = tmp_path / "stack" / "stack-second" / "model.txt"
+    model_path.write_text("other\n", encoding="utf-8")
+
+    restored = rollback_champion(runs_root=str(tmp_path), mode="curated")
+
+    assert restored.stack_id == "stack-first"
+    assert restored.previous_stack_id == "stack-second"
+
+
+def test_rollback_champion_rejects_a_stale_generation(tmp_path, mocker):
+    _publish_two_champions(tmp_path)
+    champion_file = _champion_file(tmp_path)
+    observed = pointer_generation(str(champion_file))
+    mocker.patch(
+        "instacart_platform.pointers.pointer_generation",
+        side_effect=[observed, observed + 1],
+    )
+
+    with pytest.raises(PointerConflictError, match="changed"):
+        rollback_champion(runs_root=str(tmp_path), mode="curated")
+
+    payload = json.loads(champion_file.read_text(encoding="utf-8"))
+    assert payload["stack_id"] == "stack-second"
 
 
 def test_gcs_champion_upload_matches_the_observed_generation(mocker):
