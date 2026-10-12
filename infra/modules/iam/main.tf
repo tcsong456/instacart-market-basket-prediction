@@ -68,6 +68,27 @@ resource "google_storage_bucket_iam_member" "training_runtime_write_runs" {
   member = "serviceAccount:${google_service_account.training_runtime.email}"
 }
 
+resource "google_service_account" "champion_rollback" {
+  project      = var.project_id
+  account_id   = "champion-rollback"
+  display_name = "Champion Rollback"
+}
+
+resource "google_storage_bucket_iam_member" "champion_rollback_runs" {
+  bucket = var.bucket_names["runs"]
+
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.champion_rollback.email}"
+}
+
+resource "google_service_account_iam_member" "champion_rollback_github" {
+  service_account_id = google_service_account.champion_rollback.name
+
+  role = "roles/iam.workloadIdentityUser"
+
+  member = data.terraform_remote_state.bootstrap.outputs.main_branch_principal_set
+}
+
 resource "google_service_account" "training_runner" {
   project      = var.project_id
   account_id   = "training-runner"
