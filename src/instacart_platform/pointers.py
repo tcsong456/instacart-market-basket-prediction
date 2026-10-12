@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,6 +18,8 @@ from instacart_rnn.stacking.feature_selection import (
     load_selected_artifacts,
 )
 from instacart_rnn.stacking.folds import stack_output_dir
+
+logger = logging.getLogger(__name__)
 
 POINTER_ROLES = ("champion", "challenger")
 
@@ -243,8 +246,11 @@ def rollback_champion(
 
     The current champion stack becomes ``previous_stack_id``, so a second
     rollback returns to the stack that was just left. The previous stack's
-    ``model.txt`` and checkpoints are fingerprinted. The current champion's
-    files are left in place.
+    ``model.txt`` and checkpoints are checked. When the pointer stored their
+    fingerprints, those hashes must still match. A pointer written before
+    those fields existed restores the previous stack after its files and
+    completed runs are checked. The current champion's files are left in
+    place.
 
     Args:
         runs_root: Root that contains ``pointers`` and the completed runs.
@@ -277,12 +283,20 @@ def rollback_champion(
     previous_dir = stack_output_dir(runs_root, previous_stack_id)
     record = _load_stack_record(previous_dir)
     _require_equal(record.mode, mode, f"Stack {previous_dir} mode")
-    _require_previous_fingerprints(
-        path=path,
-        payload=payload,
-        record=record,
-        runs_root=runs_root,
-    )
+    if _previous_fingerprints_recorded(payload):
+        _require_previous_fingerprints(
+            path=path,
+            payload=payload,
+            record=record,
+            runs_root=runs_root,
+        )
+    else:
+        logger.warning(
+            "Pointer %s has no stored previous fingerprints; "
+            "restoring %s after checking its files",
+            path,
+            previous_stack_id,
+        )
     return publish_champion_if_current(
         runs_root=runs_root,
         stack_dir=previous_dir,
@@ -530,6 +544,14 @@ def _existing_pointer(path: str) -> dict | None:
         "model_sha256": model_sha256,
         "models": models,
     }
+
+
+def _previous_fingerprints_recorded(payload: dict) -> bool:
+    recorded_model = payload.get("previous_model_sha256")
+    previous_models = payload.get("previous_models")
+    has_model = isinstance(recorded_model, str) and bool(recorded_model)
+    has_models = isinstance(previous_models, dict)
+    return has_model or has_models
 
 
 def _require_previous_fingerprints(
