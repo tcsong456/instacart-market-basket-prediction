@@ -433,6 +433,24 @@ def test_rollback_champion_restores_the_previous_stack(tmp_path):
     assert returned.previous_stack_id == "stack-first"
 
 
+def test_rollback_champion_restores_a_pointer_without_previous_fingerprints(
+    tmp_path,
+):
+    _publish_two_champions(tmp_path)
+    champion_file = _champion_file(tmp_path)
+    payload = json.loads(champion_file.read_text(encoding="utf-8"))
+    del payload["previous_model_sha256"]
+    del payload["previous_models"]
+    champion_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    restored = rollback_champion(runs_root=str(tmp_path), mode="curated")
+
+    assert restored.stack_id == "stack-first"
+    assert restored.previous_stack_id == "stack-second"
+    written = json.loads(champion_file.read_text(encoding="utf-8"))
+    assert written["previous_model_sha256"]
+
+
 def test_rollback_champion_rejects_a_champion_with_no_history(tmp_path):
     stack_dir = _write_named_stack(tmp_path)
     publish_pointer(runs_root=str(tmp_path), stack_dir=stack_dir, role="champion")
