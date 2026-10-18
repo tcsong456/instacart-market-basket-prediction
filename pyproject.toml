@@ -41,6 +41,10 @@ stacking = [
     "lightgbm==4.6.0",
 ]
 
+monitoring = [
+    "matplotlib==3.9.4",
+]
+
 dev = [
     "pytest==8.4.1",
     "pytest-mock==3.14.1",
